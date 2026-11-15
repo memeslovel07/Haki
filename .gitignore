@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+build/
+coverage/
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+
+# Runtime data
+data/
+storage/
+uploads/
+
+# Test artifacts
+playwright-report/
+test-results/
+
+# Local Docker data
+docker-data/
