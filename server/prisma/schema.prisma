@@ -1,0 +1,320 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────
+
+enum TeamRole {
+  OWNER
+  ADMIN
+  DEVELOPER
+  REVIEWER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum OAuthProvider {
+  GITHUB
+}
+
+enum GitHubAccountType {
+  USER
+  ORGANIZATION
+}
+
+enum SubmissionStatus {
+  DRAFT
+  SUBMITTED
+  VALIDATING
+  IN_REVIEW
+  APPROVED
+  CHANGES_REQUESTED
+  REJECTED
+  BLOCKED
+  PUBLISHING
+  PUBLISHED
+  CANCELLED
+}
+
+enum ReviewDecision {
+  APPROVED
+  CHANGES_REQUESTED
+  REJECTED
+  COMMENTED
+}
+
+enum PullRequestState {
+  OPEN
+  CLOSED
+  MERGED
+}
+
+// ─── Identity ────────────────────────────────────────
+
+model User {
+  id              String    @id @default(uuid()) @db.Uuid
+  email           String    @unique @db.VarChar(320)
+  name            String?   @db.VarChar(120)
+  passwordHash    String?   @db.VarChar(255)
+  emailVerifiedAt DateTime? @db.Timestamptz(6)
+  deletedAt       DateTime? @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  oauthAccounts   OAuthAccount[]
+  teamMemberships TeamMember[]
+
+  submissions    Submission[]    @relation("SubmissionAuthor")
+  reviews        Review[]        @relation("ReviewReviewer")
+  reviewComments ReviewComment[] @relation("ReviewCommentAuthor")
+  auditEvents    AuditEvent[]    @relation("AuditActor")
+}
+
+model OAuthAccount {
+  id                String        @id @default(uuid()) @db.Uuid
+  userId            String        @db.Uuid
+  provider          OAuthProvider
+  providerAccountId String        @db.VarChar(64)
+  username          String?       @db.VarChar(255)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@unique([userId, provider])
+  @@index([userId])
+}
+
+// ─── Teams ───────────────────────────────────────────
+
+model Team {
+  id   String @id @default(uuid()) @db.Uuid
+  name String @db.VarChar(120)
+  slug String @unique @db.VarChar(100)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  members       TeamMember[]
+  installations GitHubInstallation[]
+  repositories  Repository[]
+  settings      TeamSettings?
+  auditEvents   AuditEvent[]
+}
+
+model TeamMember {
+  id     String           @id @default(uuid()) @db.Uuid
+  teamId String           @db.Uuid
+  userId String           @db.Uuid
+  role   TeamRole         @default(DEVELOPER)
+  status MembershipStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([userId, status])
+  @@index([teamId, role])
+}
+
+model TeamSettings {
+  teamId String @id @db.Uuid
+  config Json
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+}
+
+// ─── GitHub Integration ──────────────────────────────
+
+model GitHubInstallation {
+  id             String            @id @default(uuid()) @db.Uuid
+  installationId BigInt            @unique
+  accountId      BigInt
+  accountLogin   String            @db.VarChar(255)
+  accountType    GitHubAccountType
+  teamId         String            @db.Uuid
+  suspendedAt    DateTime?         @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  team         Team         @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  repositories Repository[]
+
+  @@index([teamId])
+}
+
+model Repository {
+  id             String @id @default(uuid()) @db.Uuid
+  githubRepoId   BigInt @unique
+  teamId         String @db.Uuid
+  installationId String @db.Uuid
+
+  name          String  @db.VarChar(255)
+  fullName      String  @db.VarChar(255)
+  ownerLogin    String  @db.VarChar(255)
+  defaultBranch String  @db.VarChar(255)
+  htmlUrl       String  @db.Text
+  isPrivate     Boolean @default(true)
+  isArchived    Boolean @default(false)
+
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(6)
+  archivedAt DateTime? @db.Timestamptz(6)
+
+  team         Team               @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  installation GitHubInstallation @relation(fields: [installationId], references: [id], onDelete: Restrict)
+
+  submissions Submission[]
+  settings    RepositorySettings?
+
+  @@unique([teamId, fullName])
+  @@index([teamId])
+  @@index([installationId])
+}
+
+model RepositorySettings {
+  repositoryId String @id @db.Uuid
+  config       Json
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+}
+
+// ─── Code Governance ─────────────────────────────────
+
+model Submission {
+  id            String @id @default(uuid()) @db.Uuid
+  repositoryId  String @db.Uuid
+  submittedById String @db.Uuid
+
+  title       String  @db.VarChar(200)
+  description String? @db.Text
+
+  sourceBranch String @db.Text
+  targetBranch String @db.Text
+
+  baseCommitSha String @db.VarChar(64)
+  headCommitSha String @db.VarChar(64)
+
+  status SubmissionStatus @default(DRAFT)
+
+  submittedAt DateTime? @db.Timestamptz(6)
+  publishedAt DateTime? @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  repository  Repository @relation(fields: [repositoryId], references: [id], onDelete: Restrict)
+  submittedBy User       @relation("SubmissionAuthor", fields: [submittedById], references: [id], onDelete: Restrict)
+
+  reviews     Review[]
+  pullRequest PullRequest?
+
+  @@index([repositoryId, status, createdAt])
+  @@index([submittedById, createdAt])
+  @@index([status, createdAt])
+}
+
+model Review {
+  id                String         @id @default(uuid()) @db.Uuid
+  submissionId      String         @db.Uuid
+  reviewerId        String         @db.Uuid
+  decision          ReviewDecision
+  reviewedCommitSha String         @db.VarChar(64)
+  body              String?        @db.Text
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Restrict)
+  reviewer   User       @relation("ReviewReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+
+  comments ReviewComment[]
+
+  @@index([submissionId, createdAt])
+  @@index([reviewerId, createdAt])
+}
+
+model ReviewComment {
+  id       String  @id @default(uuid()) @db.Uuid
+  reviewId String  @db.Uuid
+  authorId String  @db.Uuid
+  filePath String? @db.Text
+  line     Int?
+  body     String  @db.Text
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Restrict)
+  author User   @relation("ReviewCommentAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([reviewId])
+  @@index([authorId])
+}
+
+// ─── Publishing ─────────────────────────────────────
+
+model PullRequest {
+  id           String           @id @default(uuid()) @db.Uuid
+  submissionId String           @unique @db.Uuid
+  githubPrId   BigInt           @unique
+  number       Int
+  url          String           @db.Text
+  state        PullRequestState @default(OPEN)
+  isDraft      Boolean          @default(false)
+
+  headBranch    String  @db.Text
+  baseBranch    String  @db.Text
+  headCommitSha String? @db.VarChar(64)
+
+  mergedAt DateTime? @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Restrict)
+
+  @@index([state])
+}
+
+// ─── Audit ───────────────────────────────────────────
+
+model AuditEvent {
+  id      String  @id @default(uuid()) @db.Uuid
+  teamId  String  @db.Uuid
+  actorId String? @db.Uuid
+
+  action     String @db.VarChar(100)
+  entityType String @db.VarChar(80)
+  entityId   String @db.VarChar(100)
+
+  metadata Json?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  team  Team  @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  actor User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([teamId, createdAt])
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+}
