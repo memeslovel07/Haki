@@ -12,8 +12,8 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
-  "private": "true",
+  "type": "module",
+  "private": true,
   "workspaces": [
     "client",
     "server",
