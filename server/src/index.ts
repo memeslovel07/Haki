@@ -1,24 +1,8 @@
-import express from "express";
-import { HealthResponseSchema } from "@haki/schemas";
+import "dotenv/config";
 import { prisma } from "./lib/prisma.js";
+import app from "./app.js";
 
-const app = express();
 const PORT = Number(process.env.PORT ?? 5000);
-
-app.use(express.json());
-
-app.get("/api/v1/health", (_req, res) => {
-  const response = {
-    success: true,
-    data: {
-      service: "HAKI API",
-      status: "healthy",
-      timestamp: new Date().toISOString(),
-    },
-  };
-
-  res.status(200).json(HealthResponseSchema.parse(response));
-});
 
 async function startServer() {
   await prisma.$connect();

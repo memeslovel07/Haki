@@ -72,6 +72,7 @@ model User {
 
   oauthAccounts   OAuthAccount[]
   teamMemberships TeamMember[]
+  refreshTokens   RefreshToken[]
 
   submissions    Submission[]    @relation("SubmissionAuthor")
   reviews        Review[]        @relation("ReviewReviewer")
@@ -317,4 +318,21 @@ model AuditEvent {
   @@index([teamId, createdAt])
   @@index([entityType, entityId])
   @@index([actorId, createdAt])
+}
+
+model RefreshToken {
+  id        String @id @default(uuid()) @db.Uuid
+  userId    String @db.Uuid
+  tokenHash String @unique @db.Char(64)
+  familyId  String @default(uuid()) @db.Uuid
+
+  expiresAt DateTime  @db.Timestamptz(6)
+  revokedAt DateTime? @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([familyId])
 }
