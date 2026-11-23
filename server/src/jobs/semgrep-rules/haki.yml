@@ -1,0 +1,9 @@
+
+rules:
+  - id: haki-eval-usage
+    languages:
+      - javascript
+      - typescript
+    severity: ERROR
+    message: Avoid eval() because it can execute untrusted code.
+    pattern: eval(...)

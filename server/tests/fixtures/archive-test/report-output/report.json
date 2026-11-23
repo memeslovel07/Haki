@@ -1,0 +1,22 @@
+[
+ {
+  "RuleID": "haki-test-secret",
+  "Description": "Detects a test-only marker",
+  "StartLine": 1,
+  "EndLine": 1,
+  "StartColumn": 1,
+  "EndColumn": 29,
+  "Match": "REDACTED",
+  "Secret": "REDACTED",
+  "File": "/repo/secret-test.txt",
+  "SymlinkFile": "",
+  "Commit": "",
+  "Entropy": 3.9783335,
+  "Author": "",
+  "Email": "",
+  "Date": "",
+  "Message": "",
+  "Tags": [],
+  "Fingerprint": "/repo/secret-test.txt:haki-test-secret:1"
+ }
+]

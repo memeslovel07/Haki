@@ -57,6 +57,22 @@ enum PullRequestState {
   MERGED
 }
 
+enum ValidationStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum FindingSeverity {
+  INFO
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
 // ─── Identity ────────────────────────────────────────
 
 model User {
@@ -228,8 +244,9 @@ model Submission {
   repository  Repository @relation(fields: [repositoryId], references: [id], onDelete: Restrict)
   submittedBy User       @relation("SubmissionAuthor", fields: [submittedById], references: [id], onDelete: Restrict)
 
-  reviews     Review[]
-  pullRequest PullRequest?
+  reviews        Review[]
+  pullRequest    PullRequest?
+  validationRuns ValidationRun[]
 
   @@index([repositoryId, status, createdAt])
   @@index([submittedById, createdAt])
@@ -335,4 +352,48 @@ model RefreshToken {
 
   @@index([userId, expiresAt])
   @@index([familyId])
+}
+
+model ValidationRun {
+  id           String           @id @default(uuid()) @db.Uuid
+  submissionId String           @db.Uuid
+  commitSha    String           @db.VarChar(64)
+  status       ValidationStatus @default(QUEUED)
+
+  startedAt   DateTime? @db.Timestamptz(6)
+  completedAt DateTime? @db.Timestamptz(6)
+
+  reportStorageKey String? @db.Text
+  errorCode        String? @db.VarChar(100)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  submission Submission          @relation(fields: [submissionId], references: [id], onDelete: Restrict)
+  findings   ValidationFinding[]
+
+  @@index([submissionId, createdAt])
+  @@index([status, createdAt])
+  @@index([commitSha])
+}
+
+model ValidationFinding {
+  id              String @id @default(uuid()) @db.Uuid
+  validationRunId String @db.Uuid
+
+  tool        String          @db.VarChar(50)
+  ruleId      String?         @db.VarChar(255)
+  severity    FindingSeverity
+  title       String          @db.VarChar(500)
+  description String?         @db.Text
+  filePath    String?         @db.Text
+  line        Int?
+  fingerprint String?         @db.VarChar(64)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  validationRun ValidationRun @relation(fields: [validationRunId], references: [id], onDelete: Cascade)
+
+  @@index([validationRunId, severity])
+  @@index([fingerprint])
 }

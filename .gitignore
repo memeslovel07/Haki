@@ -46,3 +46,5 @@ docker-data/
 .claude/
 .windsurf/
 skills-lock.json
+# GitHub App private keys
+server/*.pem
