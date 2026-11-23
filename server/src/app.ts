@@ -6,6 +6,7 @@ import cors from "cors";
 import authRoutes from "./modules/auth/auth.routes.js";
 import usersRoutes from "./modules/users/users.routes.js";
 import submissionsRoutes from "./modules/submissions/submissions.routes.js";
+import reviewsRoutes from "./modules/reviews/reviews.routes.js";
 
 const frontendOrigin = process.env.FRONTEND_ORIGIN;
 
@@ -30,6 +31,7 @@ app.use(cookieParser());
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/users", usersRoutes);
 app.use("/api/v1/submissions", submissionsRoutes);
+app.use("/api/v1/submissions", reviewsRoutes);
 
 app.get("/api/v1/health", (_req, res) => {
   const response = {
