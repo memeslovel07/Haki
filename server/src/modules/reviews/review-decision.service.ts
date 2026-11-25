@@ -1,3 +1,4 @@
+
 import { prisma } from "../../lib/prisma.js";
 
 export type SubmitReviewResult =
@@ -23,17 +24,27 @@ export async function submitSubmissionReview(
       return { success: false, code: "NOT_FOUND" };
     }
 
-    if (submission.status !== "IN_REVIEW") {
+    const reviewableStatuses = [
+      "IN_REVIEW",
+      "APPROVED",
+      "CHANGES_REQUESTED",
+      "REJECTED",
+    ] as const;
+
+    if (!reviewableStatuses.includes(submission.status as (typeof reviewableStatuses)[number])) {
       return { success: false, code: "INVALID_STATE" };
     }
+
+    const nextStatus =
+      decision === "COMMENTED" ? submission.status : decision;
 
     const guarded = await tx.submission.updateMany({
       where: {
         id: submissionId,
-        status: "IN_REVIEW",
+        status: submission.status,
         headCommitSha: submission.headCommitSha,
       },
-      data: { updatedAt: new Date() },
+      data: { status: nextStatus, updatedAt: new Date() },
     });
 
     if (guarded.count !== 1) {

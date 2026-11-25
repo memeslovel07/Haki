@@ -306,4 +306,62 @@ describe("POST /api/v1/submissions/:submissionId/reviews", () => {
       });
     },
   );
+  it.each([
+    ["APPROVED", "APPROVED"],
+    ["CHANGES_REQUESTED", "CHANGES_REQUESTED"],
+    ["REJECTED", "REJECTED"],
+    ["COMMENTED", "IN_REVIEW"],
+  ] as const)(
+    "transitions submission status for %s",
+    async (decision, expectedStatus) => {
+      const submissionId = await createSubmission();
+
+      await request(app)
+        .post(`/api/v1/submissions/${submissionId}/reviews`)
+        .set("Authorization", `Bearer ${accessToken}`)
+        .send({ decision })
+        .expect(201);
+
+      const submission = await prisma.submission.findUnique({
+        where: { id: submissionId },
+        select: { status: true },
+      });
+
+      expect(submission?.status).toBe(expectedStatus);
+    },
+  );
+
+  it("allows a later decision to override the previous decision on the same commit", async () => {
+    const submissionId = await createSubmission();
+
+    await request(app)
+      .post(`/api/v1/submissions/${submissionId}/reviews`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ decision: "CHANGES_REQUESTED" })
+      .expect(201);
+
+    await request(app)
+      .post(`/api/v1/submissions/${submissionId}/reviews`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ decision: "APPROVED" })
+      .expect(201);
+
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      select: { status: true },
+    });
+
+    const reviews = await prisma.review.findMany({
+      where: { submissionId },
+      select: { decision: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    expect(submission?.status).toBe("APPROVED");
+    expect(reviews.map((review) => review.decision)).toEqual([
+      "CHANGES_REQUESTED",
+      "APPROVED",
+    ]);
+    }, 15000);
+
 });
