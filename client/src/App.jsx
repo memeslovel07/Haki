@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { LogIn } from 'lucide-react';
 import {
   BrowserRouter,
@@ -16,54 +16,35 @@ import ImportRepository from "./pages/ImportRepository";
 import RepositoryWorkspace from "./pages/RepositoryWorkspace";
 import SettingPage from "./pages/SettingPage";
 import WorkspaceHeader from "./components/WorkspaceHeader";
-import { getCurrentUser, loginWithGitHubProfile, logoutAccount } from "./services/api";
+import { refreshBackendSession, logoutAccount } from "./services/api";
 
 function PublicHome({ onAuth }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const [showLoginPopup, setShowLoginPopup] = useState(() => Boolean(location.state?.openLogin));
+  const [showLoginPopup, setShowLoginPopup] = useState(() => Boolean(location.state?.openLogin || new URLSearchParams(window.location.search).has("auth") || new URLSearchParams(window.location.search).has("auth_error")));
+  const [oauthError, setOauthError] = useState(() => { const code = new URLSearchParams(window.location.search).get("auth_error"); const messages = { github_not_configured: "GitHub sign-in is not configured yet.", github_cancelled: "GitHub sign-in was cancelled. You can try again.", github_failed: "GitHub sign-in could not be completed. Please try again." }; return code ? messages[code] || "GitHub sign-in could not be completed." : ""; });
   const [nextPath, setNextPath] = useState(() => location.state?.from || "/");
-  const [oauthError, setOauthError] = useState("");
-  const handledOAuth = useRef(false);
-
   useEffect(() => {
-    if (handledOAuth.current) return;
     const params = new URLSearchParams(window.location.search);
-    const ticket = params.get("github_ticket");
+    const auth = params.get("auth");
     const errorCode = params.get("auth_error");
-    if (!ticket && !errorCode) return;
-    handledOAuth.current = true;
+    if (auth !== "github" && !errorCode) return;
+
     window.history.replaceState({}, "", window.location.pathname);
-    setShowLoginPopup(true);
 
-    if (errorCode) {
-      const messages = {
-        github_not_configured: "GitHub sign-in is not configured yet. Add the OAuth App values to the server .env file.",
-        github_cancelled: "GitHub sign-in was cancelled. You can try again.",
-        github_failed: "GitHub sign-in could not be completed. Please try again.",
-      };
-      setOauthError(messages[errorCode] || "GitHub sign-in could not be completed.");
-      return;
-    }
+    if (errorCode) return;
 
-    (async () => {
-      try {
-        const response = await fetch("/api/auth/github/session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ticket }),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "GitHub sign-in expired. Please try again.");
-        const result = await loginWithGitHubProfile(data.profile);
-        localStorage.setItem("haki_token", result.token);
-        finishLogin(result.user);
-      } catch (error) {
-        setOauthError(error.message || "GitHub sign-in could not be completed.");
-      }
-    })();
-  }, []);
-
+    refreshBackendSession()
+      .then((result) => {
+        onAuth(result.user);
+        setShowLoginPopup(false);
+        navigate(nextPath || "/", { replace: true });
+      })
+      .catch(() => {
+        setOauthError("GitHub sign-in could not be completed. Please try again.");
+        setShowLoginPopup(true);
+      });
+  }, [onAuth, navigate, nextPath]);
   function askForLogin(path) {
     setNextPath(path);
     setShowLoginPopup(true);
@@ -117,14 +98,14 @@ function PublicHome({ onAuth }) {
             onClick={() => askForLogin("/setting")}
             className="mb-3 w-full rounded-xl p-4 text-left text-slate-500 hover:bg-slate-50"
           >
-            ⚙️ Settings
+            Settings
           </button>
 
           <button
             onClick={() => askForLogin("/about")}
             className="mb-8 w-full rounded-xl p-4 text-left text-slate-500 hover:bg-slate-50"
           >
-            ⓘ About Us
+            About Us
           </button>
 
           <h2 className="mb-5 font-bold">GET STARTED</h2>
@@ -133,13 +114,13 @@ function PublicHome({ onAuth }) {
             onClick={() => askForLogin("/import")}
             className="w-full rounded-xl p-4 text-left text-slate-500 hover:bg-slate-50"
           >
-            ↓ Import Repository
+            Import Repository
           </button>
         </aside>
 
         <main className="min-w-0 flex-1 p-5 sm:p-8 md:p-12">
           <div className="mb-8 inline-block rounded-full bg-blue-50 px-5 py-3 text-sm font-semibold text-pink-500">
-            ✦ YOUR DEVELOPER WORKSPACE
+            YOUR DEVELOPER WORKSPACE
           </div>
 
           <h1 className="mb-5 text-4xl font-black leading-tight sm:text-5xl">
@@ -155,9 +136,9 @@ function PublicHome({ onAuth }) {
 
           <div className="grid gap-5 md:grid-cols-3">
             {[
-              ["▣", "Your repositories"],
-              ["⌁", "Your projects"],
-              ["✧", "Your activity"],
+              ["Repo", "Your repositories"],
+              ["Project", "Your projects"],
+              ["Activity", "Your activity"],
             ].map(([icon, title]) => (
               <button
                 key={title}
@@ -345,19 +326,14 @@ function AppRoutes({ user, onAuth, onUserUpdate, onSignOut }) {
 
 function App() {
   const [user, setUser] = useState(null);
-  const [checkingSession, setCheckingSession] = useState(
-    () => Boolean(localStorage.getItem("haki_token"))
-  );
+  const [checkingSession, setCheckingSession] = useState(true);
 
   useEffect(() => {
-    if (!localStorage.getItem("haki_token")) return;
-
-    getCurrentUser()
+    refreshBackendSession()
       .then((result) => setUser(result.user))
       .catch(() => localStorage.removeItem("haki_token"))
       .finally(() => setCheckingSession(false));
   }, []);
-
   async function signOut() {
     try {
       await logoutAccount();
@@ -371,7 +347,7 @@ function App() {
     <BrowserRouter>
       {checkingSession ? (
         <div className="flex min-h-screen items-center justify-center bg-[#F5F8FC] text-slate-600">
-          Loading…
+          Loading...
         </div>
       ) : (
         <AppRoutes

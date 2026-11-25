@@ -14,6 +14,11 @@ import {
 
 import { validateRequestOrigin } from "../../middleware/csrf.middleware.js";
 
+import {
+  startGitHubOAuth,
+  handleGitHubCallback,
+} from "./github-oauth.controller.js";
+
 const router = Router();
 
 router.post(
@@ -42,5 +47,8 @@ router.post(
   validateRequestOrigin,
   logoutUser
 );
+
+router.get("/github", startGitHubOAuth);
+router.get("/github/callback", handleGitHubCallback);
 
 export default router;

@@ -35,104 +35,150 @@ function startSession(db, user) {
   return { token, user: safeUser(user) };
 }
 
-export async function registerAccount({ fullName, email, password }) {
-  const address = String(email || "").trim().toLowerCase();
-  if (!fullName?.trim() || !address || !password) throw new Error("Fill in your name, email, and password.");
-  if (password.length < 8) throw new Error("Password must be at least 8 characters.");
+const AUTH_BASE = "http://localhost:5000/api/v1/auth";
+
+function localUserFromBackend(backendUser) {
   const db = dbRead();
-  if (db.users.some((user) => user.email === address)) throw new Error("This email already has an account. Sign in instead.");
-  const otp = code();
-  db.pending[address] = { fullName: fullName.trim(), email: address, passwordHash: await hash(password), code: otp, expiresAt: Date.now() + 600000 };
+  const email = String(backendUser.email || "").trim().toLowerCase();
+  let user = db.users.find((entry) => entry.email?.toLowerCase() === email);
+
+  if (!user) {
+    user = {
+      id: id("user"),
+      fullName: backendUser.name || email.split("@")[0],
+      username: email.split("@")[0],
+      email,
+      role: "member",
+      avatarId: avatars[db.users.length % avatars.length],
+      avatarDataUrl: "",
+      createdAt: backendUser.createdAt || new Date().toISOString(),
+      passwordHash: "",
+    };
+    db.users.push(user);
+  } else {
+    user.fullName = backendUser.name || user.fullName;
+    user.email = email;
+  }
+
   dbWrite(db);
-  return { message: "Preview code generated. No email was sent.", developmentCode: otp };
+  return user;
 }
 
-export async function verifyRegistration({ email, code: otp }) {
-  const address = String(email || "").trim().toLowerCase();
+async function authRequest(endpoint, options = {}) {
+  const response = await fetch(`${AUTH_BASE}${endpoint}`, {
+    credentials: "include",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(body?.error?.message || body?.error || body?.message || "Authentication failed.");
+  }
+  return body?.data ?? body;
+}
+
+function establishLocalSession(backendUser) {
   const db = dbRead();
-  const pending = db.pending[address];
-  if (!pending || pending.expiresAt < Date.now()) throw new Error("The code expired. Request a new verification code.");
-  if (pending.code !== String(otp || "").trim()) throw new Error("That verification code is incorrect.");
-  const firstUser = db.users.length === 0;
-  const user = { id: id("user"), fullName: pending.fullName, username: address.split("@")[0], email: address, role: firstUser ? "admin" : "member", avatarId: firstUser ? "admin" : avatars[db.users.length % avatars.length], avatarDataUrl: "", createdAt: new Date().toISOString(), passwordHash: pending.passwordHash };
-  db.users.push(user);
-  delete db.pending[address];
-  return startSession(db, user);
+  const user = localUserFromBackend(backendUser);
+  return startSession(dbRead(), user);
+}
+
+export async function registerAccount({ fullName, email, password }) {
+  const address = String(email || "").trim().toLowerCase();
+
+  await authRequest("/register", {
+    method: "POST",
+    body: JSON.stringify({ name: fullName.trim(), email: address, password }),
+  });
+
+  return loginAccount({ email: address, password });
 }
 
 export async function loginAccount({ email, password }) {
   const address = String(email || "").trim().toLowerCase();
-  const db = dbRead();
-  const user = db.users.find((entry) => entry.email === address);
-  if (!user || user.passwordHash !== await hash(password || "")) throw new Error("Email or password is incorrect.");
-  return startSession(db, user);
+  const result = await authRequest("/login", {
+    method: "POST",
+    body: JSON.stringify({ email: address, password }),
+  });
+
+  return establishLocalSession(result.user);
 }
 
-export async function loginWithGitHubProfile(profile) {
-  if (!profile?.id || !profile?.login) throw new Error("GitHub did not return a valid account.");
-  const db = dbRead();
-  const githubId = String(profile.id);
-  const email = String(profile.email || "").trim().toLowerCase();
-  let user = db.users.find((entry) => String(entry.githubId || "") === githubId);
-  if (!user && email) {
-    user = db.users.find((entry) => entry.email?.toLowerCase() === email);
-    if (user) user.githubId = githubId;
+let refreshPromise = null;
+
+export function refreshBackendSession() {
+  if (!refreshPromise) {
+    refreshPromise = authRequest("/refresh", { method: "POST" })
+      .then((result) => establishLocalSession(result.user))
+      .finally(() => {
+        refreshPromise = null;
+      });
   }
-  if (!user) {
-    const firstUser = db.users.length === 0;
-    user = {
-      id: id("user"),
-      githubId,
-      fullName: String(profile.name || profile.login).trim(),
-      username: String(profile.login).trim(),
-      email,
-      role: firstUser ? "admin" : "member",
-      avatarId: firstUser ? "admin" : avatars[db.users.length % avatars.length],
-      avatarDataUrl: "",
-      createdAt: new Date().toISOString(),
-      passwordHash: "",
-    };
-    db.users.push(user);
-  }
-  return startSession(db, user);
+
+  return refreshPromise;
 }
-export async function getCurrentUser() { const user = requireUser(dbRead()); return { user: safeUser(user) }; }
+
+export async function loginWithGitHubProfile() {
+  return refreshBackendSession();
+}
+
+export async function getCurrentUser() {
+  const user = requireUser(dbRead());
+  return { user: safeUser(user) };
+}
+
 export async function logoutAccount() {
-  const db = dbRead(); const token = localStorage.getItem(TOKEN_KEY);
-  if (token) delete db.sessions[token];
-  dbWrite(db); localStorage.removeItem(TOKEN_KEY); return { message: "Signed out." };
+  try {
+    await authRequest("/logout", { method: "POST" });
+  } finally {
+    const db = dbRead();
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (token) delete db.sessions[token];
+    dbWrite(db);
+    localStorage.removeItem(TOKEN_KEY);
+  }
 }
-export async function requestPasswordReset(email) {
-  const address = String(email || "").trim().toLowerCase(); const db = dbRead();
-  if (!db.users.some((user) => user.email === address)) throw new Error("No account was found for this email.");
-  const otp = code(); db.pending[`reset:${address}`] = { code: otp, expiresAt: Date.now() + 600000 }; dbWrite(db);
-  return { message: "Preview reset code generated. No email was sent.", developmentCode: otp };
+
+export async function requestPasswordReset() {
+  throw new Error("Password reset is not yet supported by the server.");
 }
-export async function resetPassword({ email, code: otp, password }) {
-  const address = String(email || "").trim().toLowerCase(); const db = dbRead(); const pending = db.pending[`reset:${address}`];
-  if (!password || password.length < 8) throw new Error("New password must be at least 8 characters.");
-  if (!pending || pending.expiresAt < Date.now()) throw new Error("The code expired. Request a new reset code.");
-  if (pending.code !== String(otp || "").trim()) throw new Error("That reset code is incorrect.");
-  const user = db.users.find((entry) => entry.email === address); if (!user) throw new Error("No account was found for this email.");
-  user.passwordHash = await hash(password); delete db.pending[`reset:${address}`]; dbWrite(db);
-  return { message: "Password updated. Sign in with your new password." };
+
+export async function resetPassword() {
+  throw new Error("Password reset is not yet supported by the server.");
 }
-export async function changeAccountPassword({ currentPassword, newPassword }) {
-  const db = dbRead(); const user = requireUser(db);
-  if (user.passwordHash !== await hash(currentPassword || "")) throw new Error("Current password is incorrect.");
-  if (!newPassword || newPassword.length < 8) throw new Error("New password must be at least 8 characters.");
-  user.passwordHash = await hash(newPassword); dbWrite(db); return { message: "Password changed in this browser preview." };
+
+export async function changeAccountPassword() {
+  throw new Error("Changing passwords is not yet supported by the server.");
 }
+
 export async function updateProfileAvatar(avatarDataUrl) {
-  const db = dbRead(); const user = requireUser(db); user.avatarDataUrl = avatarDataUrl; dbWrite(db); return { user: safeUser(user) };
+  const db = dbRead();
+  const user = requireUser(db);
+  user.avatarDataUrl = avatarDataUrl;
+  dbWrite(db);
+  return { user: safeUser(user) };
 }
+
 export async function updateAccountProfile(profile) {
-  const db = dbRead(); const user = requireUser(db);
+  const db = dbRead();
+  const user = requireUser(db);
   const email = String(profile.email || user.email).trim().toLowerCase();
-  if (db.users.some((entry) => entry.id !== user.id && entry.email === email)) throw new Error("That email is already used by another local account.");
-  user.fullName = String(profile.name || user.fullName).trim(); user.username = String(profile.username || user.username).trim(); user.email = email;
-  user.bio = String(profile.bio || "").trim(); user.location = String(profile.location || "").trim();
-  dbWrite(db); return { user: safeUser(user) };
+
+  if (db.users.some((entry) => entry.id !== user.id && entry.email === email)) {
+    throw new Error("That email is already used by another local account.");
+  }
+
+  user.fullName = String(profile.name || user.fullName).trim();
+  user.username = String(profile.username || user.username).trim();
+  user.email = email;
+  user.bio = String(profile.bio || "").trim();
+  user.location = String(profile.location || "").trim();
+  dbWrite(db);
+  return { user: safeUser(user) };
 }
 
 export async function getRepositories() {
