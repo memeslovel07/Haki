@@ -242,7 +242,7 @@ export async function refreshSession(req: Request, res: Response) {
   } catch (error) {
   console.error(
     "Refresh failed:",
-    error instanceof Error ? error.name : typeof error
+    error instanceof Error ? `${error.name}: ${error.message}\n${error.stack || ""}` : String(error)
   );
    
 

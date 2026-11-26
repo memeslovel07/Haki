@@ -1,0 +1,9 @@
+
+rules:
+  - id: haki-test-dangerous-call
+    languages:
+      - javascript
+      - typescript
+    severity: ERROR
+    message: Test rule detects eval usage.
+    pattern: eval(...)

@@ -1,0 +1,7 @@
+title = "HAKI test config"
+
+[[rules]]
+id = "haki-test-secret"
+description = "Detects a test-only marker"
+regex = '''HAKI_TEST_SECRET_[A-Z0-9]{12}'''
+secretGroup = 0
