@@ -35,7 +35,7 @@ function startSession(db, user) {
   return { token, user: safeUser(user) };
 }
 
-const AUTH_BASE = "http://localhost:5000/api/v1/auth";
+const AUTH_BASE = "http://localhost:5001/api/v1/auth";
 
 function localUserFromBackend(backendUser) {
   const db = dbRead();
@@ -183,6 +183,14 @@ export async function updateAccountProfile(profile) {
 
 export async function getRepositories() {
   const db = dbRead(); const user = requireUser(db);
+  // Remove the temporary local demo repository created by older versions.
+  const oldDemoIds = db.repositories.filter((repo) => repo.ownerId === user.id && repo.demo === true && repo.name === "haki-demo").map((repo) => repo.id);
+  if (oldDemoIds.length) {
+    db.repositories = db.repositories.filter((repo) => !oldDemoIds.includes(repo.id));
+    db.files = db.files.filter((file) => !oldDemoIds.includes(file.repositoryId));
+    db.commits = db.commits.filter((commit) => !oldDemoIds.includes(commit.repositoryId));
+    dbWrite(db);
+  }
   return { data: db.repositories.filter((repo) => repo.ownerId === user.id || repo.visibility === "public") };
 }
 export async function getRepository(repoId) {

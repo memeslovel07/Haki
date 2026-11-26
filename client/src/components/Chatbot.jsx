@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-
+import {Bot} from "lucide-react"
 const ui = {
   greeting: "Hi! I’m Haki Assistant. Ask me anything about using HAKI.",
   title: "Haki Assistant",
@@ -27,7 +27,7 @@ const ui = {
   ],
 };
 
-function Chatbot() {
+function Chatbot({ theme = "dark" }) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState("");
@@ -74,55 +74,54 @@ function Chatbot() {
   }
 
   return (
-    <div className="fixed bottom-5 right-5 z-50 font-sans sm:bottom-32 sm:right-7">
+    <div className="chatbot-shell fixed bottom-5 right-5 z-50 font-sans sm:bottom-24 sm:right-7" data-theme={theme}>
       {isOpen && (
-        <section aria-label="Haki Assistant chat" className="mb-3 flex h-[min(620px,calc(100dvh-110px))] w-[min(410px,calc(100vw-32px))] flex-col overflow-hidden rounded-2xl border border-[#DCD2DC] bg-[#FFF8F1] text-[#302D3B] shadow-2xl shadow-black/50">
-          <header className="flex items-center justify-between gap-2 border-b border-[#E8D9DE] bg-white px-4 py-3.5">
+        <section aria-label="Haki Assistant chat" className="mb-3 flex h-[min(620px,calc(100dvh-110px))] w-[min(410px,calc(100vw-32px))] flex-col overflow-hidden rounded-2xl border border-white/[0.09] bg-[#101829] text-[#E9ECF5] shadow-xl shadow-black/30">
+          <header className="flex items-center justify-between gap-2 border-b border-white/[0.07] bg-[#151F31] px-4 py-3.5">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#BFC3DF]/10 text-xl" aria-hidden="true">✦</div>
-              <div className="min-w-0"><h2 className="text-sm font-semibold">{ui.title}</h2><p className="text-xs text-[#718A7E]">{ui.subtitle}</p></div>
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#687386]/15 text-xl text-[#B0BAC7]" aria-hidden="true">✦</div>
+              <div className="min-w-0"><h2 className="text-sm font-semibold">{ui.title}</h2><p className="text-xs text-[#8994AA]">{ui.subtitle}</p></div>
             </div>
-            <button type="button" onClick={() => setIsOpen(false)} aria-label={ui.close} className="rounded-lg px-2 py-1 text-xl text-[#706B79] hover:bg-[#F0E8EC] hover:text-[#302D3B]">×</button>
+            <button type="button" onClick={() => setIsOpen(false)} aria-label={ui.close} className="rounded-lg px-2 py-1 text-xl text-[#9AA5B8] hover:bg-white/[0.06] hover:text-white">×</button>
           </header>
-
           <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4" aria-live="polite">
             {conversation.map((message, index) => (
               <div key={`${index}-${message.role}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                <p className={`max-w-[88%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-sm leading-6 ${message.role === "user" ? "rounded-br-md bg-[#B9BFDD] text-[#302D3B]" : "rounded-bl-md bg-[#F0E8EC] text-[#484451]"}`}>{message.role === "assistant" && index === 0 ? ui.greeting : message.content}</p>
+                <p className={`max-w-[88%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-sm leading-6 ${message.role === "user" ? "rounded-br-md bg-[#438C89] text-white" : "rounded-bl-md bg-[#F1F2F0] text-[#30332F]"}`}>{message.role === "assistant" && index === 0 ? ui.greeting : message.content}</p>
               </div>
             ))}
             {messages.length === 0 && (
               <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#827C89]">{ui.suggestionsTitle}</p>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#8994AA]">{ui.suggestionsTitle}</p>
                 <div className="flex flex-wrap gap-2">
-                  {ui.suggestions.map((question) => <button key={question} type="button" onClick={() => sendQuestion(question)} className="rounded-full border border-[#DCD2DC] bg-white px-3 py-1.5 text-left text-xs text-[#514D5A] hover:border-[#A9B9D3] hover:bg-[#F6F4FA]">{question}</button>)}
+                  {ui.suggestions.map((question) => <button key={question} type="button" onClick={() => sendQuestion(question)} className="rounded-full border border-white/[0.09] bg-white/[0.035] px-3 py-1.5 text-left text-xs text-[#B8C1D1] hover:border-[#8A95A3]/40 hover:bg-white/[0.07]">{question}</button>)}
                 </div>
               </div>
             )}
-            {isSending && <p className="w-fit rounded-2xl rounded-bl-md bg-[#F0E8EC] px-3.5 py-2.5 text-sm text-[#706B79]">{ui.thinking}</p>}
-            {error && <p role="alert" className="rounded-xl border border-amber-600/20 bg-amber-100 px-3 py-2 text-xs leading-5 text-amber-900">{error}</p>}
+            {isSending && <p className="w-fit rounded-2xl rounded-bl-md bg-[#1B2639] px-3.5 py-2.5 text-sm text-[#AAB4C5]">{ui.thinking}</p>}
+            {error && <p role="alert" className="rounded-xl border border-[#E8B6A8] bg-[#FFF1EC] px-3 py-2 text-xs leading-5 text-[#713D32]">{error}</p>}
             <div ref={endRef} />
           </div>
 
-          <form onSubmit={sendMessage} className="border-t border-[#E8D9DE] p-3">
+          <form onSubmit={sendMessage} className="border-t border-[#E5E7EC] bg-white p-3">
             <label className="sr-only" htmlFor="haki-chat-message">{ui.label}</label>
-            <div className="flex items-end gap-2 rounded-xl border border-[#DCD2DC] bg-white p-2 focus-within:border-[#A9B9D3]">
+            <div className="flex items-end gap-2 rounded-xl border border-[#D9DEDA] bg-[#F8F9F7] p-2 focus-within:border-[#438C89] focus-within:ring-2 focus-within:ring-[#438C89]/15">
               <textarea ref={inputRef} id="haki-chat-message" value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
                   event.currentTarget.form.requestSubmit();
                 }
-              }} maxLength={2000} rows={1} placeholder={ui.placeholder} className="max-h-28 min-h-10 flex-1 resize-y bg-transparent px-2 py-2 text-sm text-[#302D3B] outline-none placeholder:text-[#827C89]" />
-              <button type="submit" disabled={!draft.trim() || isSending} aria-label="Send message" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#A9B9D3] text-lg font-bold text-[#302D3B] transition hover:bg-[#BFC3DF] disabled:cursor-not-allowed disabled:opacity-40">↑</button>
+              }} maxLength={2000} rows={1} placeholder={ui.placeholder} className="max-h-28 min-h-10 flex-1 resize-y bg-transparent px-2 py-2 text-sm text-[#30332F] outline-none placeholder:text-[#777B72]" />
+              <button type="submit" disabled={!draft.trim() || isSending} aria-label="Send message" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#438C89] text-lg font-bold text-white transition hover:bg-[#326D69] disabled:cursor-not-allowed disabled:opacity-40">↑</button>
             </div>
-            <p className="mt-2 text-center text-[10px] text-[#827C89]">{ui.footer}</p>
+            <p className="mt-2 text-center text-[10px] text-[#8994AA]">{ui.footer}</p>
           </form>
         </section>
       )}
 
       <div className="flex justify-end">
-        <button type="button" onClick={() => { setIsOpen((open) => !open); if (!isOpen) window.setTimeout(() => inputRef.current?.focus(), 50); }} aria-expanded={isOpen} aria-label={isOpen ? ui.close : ui.open} className="flex items-center gap-2 rounded-full border border-[#D9D8E8] bg-white px-5 py-3 text-sm font-semibold text-[#302D3B] shadow-lg shadow-[#A9B9D3]/30 transition hover:-translate-y-0.5 hover:bg-[#F0E8EC]">
-          <span aria-hidden="true" className="text-lg text-[#8293B2]">✦</span>{isOpen ? ui.closeAssistant : ui.open}
+        <button type="button" onClick={() => { setIsOpen((open) => !open); if (!isOpen) window.setTimeout(() => inputRef.current?.focus(), 50); }} aria-expanded={isOpen} aria-label={isOpen ? ui.close : ui.open} className="flex items-center gap-2 rounded-full border border-[#438C89] bg-[#438C89] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-black/20 transition hover:-translate-y-0.5 hover:border-[#326D69] hover:bg-[#326D69]">
+          <span aria-hidden="true" className="text-lg text-white"><Bot /></span>{isOpen ? ui.closeAssistant : ui.open}
         </button>
       </div>
     </div>

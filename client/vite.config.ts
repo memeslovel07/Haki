@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/api/v1": {
-        target: process.env.HAKI_API_TARGET || "http://localhost:5000",
+        target: process.env.HAKI_API_TARGET || "http://localhost:5001",
         changeOrigin: true,
       },
     },

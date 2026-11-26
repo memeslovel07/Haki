@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { Moon, Sun } from "lucide-react";
 
 import {
   getRepository,
@@ -14,8 +15,9 @@ import {
 import DirectoryTree from "../components/DirectoryTree";
 import UserAvatar from "../components/UserAvatar";
 
-function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
-  const { id } = useParams();
+function RepositoryWorkspace({ user, onUserUpdate, onSignOut, theme, onThemeToggle }) {
+  const { id, fileId } = useParams();
+  const navigate = useNavigate();
 
   const [repository, setRepository] = useState(null);
   const canManageRepository = user?.role === "admin" || repository?.ownerId === user?.id;
@@ -26,6 +28,7 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const readmeFile = files.find((file) => /(^|\/)readme(?:\.[^/]*)?$/i.test(file.path || file.name || ""));
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
 
@@ -41,6 +44,17 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
   const [commitModalOpen, setCommitModalOpen] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
   const [committing, setCommitting] = useState(false);
+
+  function openFile(file) {
+    setSelectedFile(file);
+    setEditedContent(file.content || "");
+    navigate(`/repositories/${id}/${encodeURIComponent(file.id)}`);
+  }
+
+  function closeFile() {
+    setSelectedFile(null);
+    navigate(`/repositories/${id}`);
+  }
 
   function openCreateFileModal() {
     setError("");
@@ -284,15 +298,11 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
       setFiles(filesResponse.data);
       setCommits(commitsResponse.data);
 
-      if (filesResponse.data.length > 0) {
-        setSelectedFile(filesResponse.data[0]);
-        setEditedContent(
-          filesResponse.data[0].content || ""
-        );
-      } else {
-        setSelectedFile(null);
-        setEditedContent("");
-      }
+      const requestedFile = fileId
+        ? filesResponse.data.find((file) => String(file.id) === fileId)
+        : null;
+      setSelectedFile(requestedFile || null);
+      setEditedContent(requestedFile?.content || "");
     } catch (error) {
       console.error("Failed to load repository:", error);
 
@@ -309,6 +319,13 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
   }, [id]);
 
   useEffect(() => {
+    if (!files.length) return;
+    const routeFile = fileId ? files.find((file) => String(file.id) === fileId) : null;
+    setSelectedFile(routeFile || null);
+    setEditedContent(routeFile?.content || "");
+  }, [fileId, files]);
+
+  useEffect(() => {
     if (selectedFile) {
       setEditedContent(selectedFile.content || "");
     }
@@ -316,9 +333,9 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#FFF8F1] text-[#302D3B]">
+      <div className="repository-page page-enter min-h-screen bg-[#FAF8F1] text-[#4F574F]" data-theme={theme}>
         <div className="flex min-h-[80vh] items-center justify-center">
-          <p className="text-[#827C89]">
+          <p className="text-[#777B72]">
             Loading repository...
           </p>
         </div>
@@ -328,15 +345,15 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
 
   if (error && !repository) {
     return (
-      <div className="min-h-screen bg-[#FFF8F1] text-[#302D3B]">
+      <div className="repository-page page-enter min-h-screen bg-[#FAF8F1] text-[#4F574F]" data-theme={theme}>
         <div className="mx-auto max-w-7xl px-6 py-10">
-          <div className="rounded-lg border border-[#E5BEBB] bg-[#FBE3DF] px-4 py-3 text-[#9B5555]">
+          <div className="rounded-lg border border-[#E2D8C8] bg-[#F1E8DD] px-4 py-3 text-[#786F61]">
             {error}
           </div>
 
           <Link
             to="/"
-            className="mt-6 inline-block text-sm text-[#7581AA] hover:text-[#818BAF]"
+            className="mt-6 inline-block text-sm text-[#7F8C77] hover:text-[#7F8C77]"
           >
             ← Back to repositories
           </Link>
@@ -346,31 +363,31 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#FFF8F1] text-[#302D3B]">
+    <div className="repository-page page-enter min-h-screen bg-[#FAF8F1] text-[#4F574F]" data-theme={theme}>
 
-      <div className="border-b border-[#E8D9DE] bg-[#FFF8F1]">
+      <div className="border-b border-[#E5E7EC] bg-[#FAF8F1]">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
 
           <div>
             <div className="flex items-center gap-3">
               <Link
                 to="/"
-                className="text-sm text-[#827C89] transition hover:text-[#302D3B]"
+                className="text-sm text-[#777B72] transition hover:text-[#4F574F]"
               >
                 Repositories
               </Link>
 
-              <span className="text-[#A49DA8]">/</span>
+              <span className="text-[#92948A]">/</span>
 
               <h1 className="text-xl font-bold">
                 {repository?.name}
               </h1>
-              <span className="rounded-full border border-[#DCD2DC] bg-white px-2.5 py-1 text-xs font-semibold text-[#706B79]">
+              <span className="rounded-full border border-[#E1E3E8] bg-white px-2.5 py-1 text-xs font-semibold text-[#666B63]">
                 {repository?.visibility === "public" ? "🌐 Public" : "🔒 Private"}
               </span>
             </div>
 
-            <p className="mt-1 text-sm text-[#827C89]">
+            <p className="mt-1 text-sm text-[#777B72]">
               {repository?.description || "No description"}
             </p>
           </div>
@@ -379,22 +396,24 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
 
             <UserAvatar user={user} onUserUpdate={onUserUpdate} size="h-9 w-9" />
 
-            <span className="rounded-full bg-[#F0E8EC] px-4 py-2 text-sm text-[#514D5A]">
+            <span className="rounded-full bg-[#F0F1F4] px-4 py-2 text-sm text-[#5B6058]">
               main
             </span>
 
-            <button onClick={onSignOut} title={`Signed in as ${user?.email || ""}`} className="rounded-lg border border-[#DCD2DC] px-3 py-2 text-sm text-[#514D5A] transition hover:bg-[#F0E8EC] hover:text-[#302D3B]">
+            <button type="button" onClick={onThemeToggle} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`} title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`} className="theme-toggle rounded-lg border border-[#E1E3E8] p-2 text-[#5B6058] hover:bg-[#F0F1F4]">{theme === "dark" ? <Sun size={15}/> : <Moon size={15}/>}</button>
+
+            <button onClick={onSignOut} title={`Signed in as ${user?.email || ""}`} className="rounded-lg border border-[#E1E3E8] px-3 py-2 text-sm text-[#5B6058] transition hover:bg-[#F0F1F4] hover:text-[#4F574F]">
               {user?.role === "admin" ? "Admin · Sign out" : "Sign out"}
             </button>
 
             {canManageRepository && <button
               onClick={openCreateFileModal}
-              className="rounded-lg border border-[#DCD2DC] px-4 py-2 text-sm font-medium text-[#514D5A] transition hover:bg-[#F0E8EC] hover:text-[#302D3B]"
+              className="rounded-lg border border-[#E1E3E8] px-4 py-2 text-sm font-medium text-[#5B6058] transition hover:bg-[#F0F1F4] hover:text-[#4F574F]"
             >
               + New File
             </button>}
 
-            {canManageRepository && <label className="cursor-pointer rounded-lg bg-[#B9BFDD] px-4 py-2 text-sm font-medium text-[#302D3B] transition hover:bg-[#A6AED1]">
+            {canManageRepository && <label className="cursor-pointer rounded-lg bg-[#E0E4EA] px-4 py-2 text-sm font-medium text-[#4F574F] transition hover:bg-[#B0BEAD]">
               {uploading ? "Uploading..." : "⬆ Upload File"}
 
               <input
@@ -406,7 +425,7 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
               />
             </label>}
 
-            {canManageRepository && <label className="cursor-pointer rounded-lg border border-[#DCD2DC] px-4 py-2 text-sm font-medium text-[#514D5A] transition hover:bg-[#F0E8EC] hover:text-[#302D3B]">
+            {canManageRepository && <label className="cursor-pointer rounded-lg border border-[#E1E3E8] px-4 py-2 text-sm font-medium text-[#5B6058] transition hover:bg-[#F0F1F4] hover:text-[#4F574F]">
               {uploading ? "Uploading..." : "📁 Upload Folder"}
 
               <input
@@ -427,205 +446,83 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
       <div className="mx-auto max-w-7xl px-6 py-6">
 
         {error && (
-          <div className="mb-5 flex items-center justify-between gap-4 rounded-lg border border-[#E5BEBB] bg-[#FBE3DF] px-4 py-3 text-sm text-[#9B5555]">
+          <div className="mb-5 flex items-center justify-between gap-4 rounded-lg border border-[#E2D8C8] bg-[#F1E8DD] px-4 py-3 text-sm text-[#786F61]">
             <span>{error}</span>
 
             <button
               onClick={() => setError("")}
-              className="text-lg hover:text-[#302D3B]"
+              className="text-lg hover:text-[#4F574F]"
             >
               ×
             </button>
           </div>
         )}
 
-        <div className="grid min-h-[600px] overflow-hidden rounded-xl border border-[#E8D9DE] bg-white md:grid-cols-[280px_1fr]">
-
-          <aside className="border-b border-[#E8D9DE] bg-[#FFF8F1] md:border-b-0 md:border-r">
-
-            <div className="border-b border-[#E8D9DE] px-5 py-4">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-[#706B79]">
-                Files
-              </h2>
-
-              <p className="mt-1 text-xs text-[#958F9B]">
-                {files.length}{" "}
-                {files.length === 1 ? "file" : "files"}
-              </p>
-            </div>
-
-            <div className="p-3">
-
-              <DirectoryTree
-                files={files}
-                selectedFileId={selectedFile?.id}
-                onFileSelect={(file) => {
-                  setSelectedFile(file);
-                  setEditedContent(file.content || "");
-                }}
-              />
-
-              {files.length === 0 && (
-                <div className="px-3 py-10 text-center">
-
-                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-[#E8D9DE] bg-white text-2xl">
-                    📂
-                  </div>
-
-                  <h3 className="mt-5 text-sm font-semibold text-[#514D5A]">
-                    No files yet
-                  </h3>
-
-                  <p className="mt-2 text-xs leading-5 text-[#958F9B]">
-                    {canManageRepository ? "Create a new file or upload a file from your computer." : "This repository does not contain any files yet."}
-                  </p>
-
-                  {canManageRepository && <div className="mt-5 flex flex-col gap-2">
-
-                    <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#B9BFDD] px-4 py-2.5 text-sm font-medium text-[#302D3B] transition hover:bg-[#A6AED1]">
-                      ⬆ Upload File
-
-                      <input
-                        type="file"
-                        accept="*/*"
-                        className="hidden"
-                        onChange={handleUploadFile}
-                        disabled={uploading}
-                      />
-                    </label>
-
-                    <button
-                      onClick={openCreateFileModal}
-                      className="rounded-lg border border-[#E8D9DE] px-4 py-2.5 text-sm text-[#7581AA] transition hover:bg-white hover:text-[#818BAF]"
-                    >
-                      + Create File
-                    </button>
-
-                  </div>}
-                </div>
-              )}
-
-            </div>
-          </aside>
-
-          <main className="flex min-w-0 flex-col">
-
-            {selectedFile ? (
-              <>
-
-                <div className="flex items-center justify-between border-b border-[#E8D9DE] px-6 py-4">
-
-                  <div className="min-w-0">
-
-                    <h2 className="truncate font-semibold text-[#302D3B]">
-                      {selectedFile.name}
-                    </h2>
-
-                    <p className="mt-1 truncate text-xs text-[#958F9B]">
-                      {selectedFile.path}
-                    </p>
-
-                  </div>
-
-                  <div className="ml-4 flex shrink-0 items-center gap-3">
-
-                    {canManageRepository && <button
-                      onClick={handleDeleteFile}
-                      className="rounded-lg border border-[#E5BEBB] px-4 py-2 text-sm font-medium text-[#9B5555] transition hover:bg-[#FBE3DF]"
-                    >
-                      Delete
-                    </button>}
-
-                    {canManageRepository && <button
-                      onClick={handleSaveFile}
-                      disabled={saving}
-                      className="rounded-lg bg-[#B9BFDD] px-4 py-2 text-sm font-medium text-[#302D3B] transition hover:bg-[#A6AED1] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {saving ? "Saving..." : "Save File"}
-                    </button>}
-
-                  </div>
-                </div>
-
-                <div className="flex-1 bg-[#FFF8F1] p-6">
-
-                  <textarea
-                    value={editedContent}
-                    onChange={(event) =>
-                      setEditedContent(event.target.value)
-                    }
-                    readOnly={!canManageRepository}
-                    spellCheck="false"
-                    className="h-full min-h-[500px] w-full resize-none rounded-lg border border-[#E8D9DE] bg-[#FFF8F1] p-4 font-mono text-sm leading-7 text-[#514D5A] outline-none focus:border-[#AEB6D8] read-only:cursor-default"
-                    placeholder="File content..."
-                  />
-
-                </div>
-
-              </>
-            ) : (
-
-              <div className="flex flex-1 items-center justify-center p-10 text-center">
-
-                <div>
-
-                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-[#E8D9DE] bg-white text-2xl">
-                    ⬆
-                  </div>
-
-                  <h2 className="mt-5 text-lg font-semibold">
-                    Upload a file
-                  </h2>
-
-                  <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#827C89]">
-                    {canManageRepository ? "Select a file from your computer to add it to this repository." : "Choose a file from the list to view it."}
-                  </p>
-
-                  {canManageRepository && <label className="mt-6 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#B9BFDD] px-5 py-3 text-sm font-medium text-[#302D3B] transition hover:bg-[#A6AED1]">
-                    ⬆ Upload File
-
-                    <input
-                      type="file"
-                      accept="*/*"
-                      className="hidden"
-                      onChange={handleUploadFile}
-                      disabled={uploading}
-                    />
-                  </label>}
-
-                  <p className="mt-3 text-xs text-[#958F9B]">
-                    HTML, CSS, JS, JSX, JSON, SVG, Markdown, TXT and XML supported
-                  </p>
-
-                </div>
+        {selectedFile ? (
+          <section className="mb-8">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E5E7EC] px-4 py-5">
+              <div className="flex min-w-0 items-center gap-2 text-sm">
+                <button onClick={closeFile} className="shrink-0 font-medium text-[#438C89] hover:underline">{repository?.name}</button>
+                <span className="text-[#92948A]">/</span>
+                <span className="truncate font-semibold text-[#30332F]">{selectedFile.path || selectedFile.name}</span>
               </div>
-            )}
+              <div className="flex items-center gap-2">
+                <span className="rounded-md border border-[#E1E3E8] px-3 py-1.5 text-xs text-[#666B63]">Code</span>
+                <button onClick={() => navigator.clipboard?.writeText(editedContent)} className="rounded-lg border border-[#E1E3E8] px-3.5 py-2 text-xs text-[#666B63] transition hover:bg-[#F0F1F4]">Copy file</button>
+                {canManageRepository && <button onClick={handleDeleteFile} className="rounded-md border border-[#E2D8C8] px-3 py-1.5 text-xs text-[#786F61] hover:bg-[#F1E8DD]">Delete</button>}
+                {canManageRepository && <button onClick={handleSaveFile} disabled={saving} className="rounded-md bg-[#438C89] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#367C79] disabled:opacity-50">{saving ? "Saving…" : "Save file"}</button>}
+              </div>
+            </div>
+            {commits[0] && <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E5E7EC] px-4 py-3 text-xs"><span className="font-medium text-[#5B6058]">{user?.fullName || user?.email} <span className="ml-2 font-normal text-[#777B72]">{commits[0].message}</span></span><span className="text-[#92948A]">{new Date(commits[0].createdAt).toLocaleString()}</span></div>}
+            <div className={`overflow-auto py-5 font-mono text-sm leading-7 sm:py-7 ${theme === "dark" ? "text-[#E6EDF3]" : "text-[#30332F]"}`}>
+              {(editedContent || "This file is empty.").split("\n").map((line, index) => <div key={index} className={`grid min-w-max grid-cols-[3.5rem_1fr] pr-8 ${theme === "dark" ? "hover:bg-white/[0.035]" : "hover:bg-black/[0.035]"}`}><span className={`select-none border-r pr-4 text-right ${theme === "dark" ? "border-white/[0.08] text-[#7D8590]" : "border-black/[0.08] text-[#92948A]"}`}>{index + 1}</span><span className="whitespace-pre pl-6 sm:pl-8">{line || " "}</span></div>)}
+            </div>
+            {canManageRepository && <details className="border-t border-[#E5E7EC]">
+              <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-[#666B63]">Edit file</summary>
+              <textarea value={editedContent} onChange={(event) => setEditedContent(event.target.value)} spellCheck="false" className="min-h-64 w-full resize-y border-t border-[#E5E7EC] bg-white p-4 font-mono text-sm leading-6 text-[#30332F] outline-none" placeholder="File content..." />
+            </details>}
+          </section>
+        ) : (
+          <>
+            <section className="overflow-hidden rounded-xl border border-[#E5E7EC] bg-white">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E5E7EC] bg-[#FAF8F1] px-5 py-4">
+                <div className="flex items-center gap-3"><span className="rounded-md bg-[#F0F1F4] px-3 py-1.5 text-sm font-semibold text-[#4F574F]">main</span><span className="text-sm font-semibold text-[#30332F]">{repository?.name}</span></div>
+                <span className="text-xs text-[#92948A]">{files.length} {files.length === 1 ? "file" : "files"}</span>
+              </div>
+              {commits[0] && <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E5E7EC] px-5 py-3 text-xs"><span className="font-medium text-[#5B6058]">{user?.fullName || user?.email} <span className="ml-2 font-normal text-[#777B72]">{commits[0].message}</span></span><span className="text-[#92948A]">{new Date(commits[0].createdAt).toLocaleString()}</span></div>}
+              <div className="border-b border-[#E5E7EC] px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[#92948A]">Repository files</div>
+              {files.length ? <div className="divide-y divide-[#E5E7EC]"><DirectoryTree files={files} selectedFileId={null} onFileSelect={openFile} /></div> : <div className="px-5 py-12 text-center"><p className="text-sm text-[#92948A]">No files in this repository yet.</p>{canManageRepository && <button onClick={openCreateFileModal} className="mt-4 rounded-lg bg-[#438C89] px-4 py-2 text-sm font-semibold text-white hover:bg-[#367C79]">Create first file</button>}</div>}
+              {canManageRepository && <div className="flex flex-wrap gap-2 border-t border-[#E5E7EC] px-5 py-3"><button onClick={openCreateFileModal} className="rounded-md border border-[#E1E3E8] px-3 py-2 text-xs font-medium text-[#5B6058] hover:bg-[#F0F1F4]">+ New file</button><label className="cursor-pointer rounded-md border border-[#E1E3E8] px-3 py-2 text-xs font-medium text-[#5B6058] hover:bg-[#F0F1F4]">{uploading ? "Uploading…" : "Upload files"}<input type="file" multiple className="hidden" onChange={handleUploadFile} disabled={uploading}/></label><label className="cursor-pointer rounded-md border border-[#E1E3E8] px-3 py-2 text-xs font-medium text-[#5B6058] hover:bg-[#F0F1F4]">Upload folder<input type="file" className="hidden" webkitdirectory="true" directory="true" multiple onChange={handleUploadFile} disabled={uploading}/></label></div>}
+            </section>
+            {readmeFile && <section className="mt-6 overflow-hidden rounded-xl border border-[#E5E7EC] bg-white">
+              <div className="border-b border-[#E5E7EC] px-5 py-4"><h2 className="font-semibold text-[#30332F]">README.md</h2></div>
+              <div className="space-y-3 px-6 py-6 text-sm leading-7 text-[#4F574F]">{(readmeFile.content || "README is empty.").split("\n").map((line, index) => line.startsWith("# ") ? <h2 key={index} className="text-2xl font-bold text-[#30332F]">{line.slice(2)}</h2> : line.startsWith("## ") ? <h3 key={index} className="pt-2 text-xl font-semibold text-[#30332F]">{line.slice(3)}</h3> : /^[-*] /.test(line) ? <p key={index} className="pl-5">• {line.slice(2)}</p> : line.trim() ? <p key={index}>{line}</p> : null)}</div>
+            </section>}
+          </>
+        )}
 
-          </main>
-        </div>
-
-        <div className="mt-5 rounded-xl border border-[#E8D9DE] bg-white px-5 py-4">
+        <div className="mt-5 rounded-xl border border-[#E5E7EC] bg-white px-5 py-4">
 
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
 
             <div>
 
-              <p className="text-sm font-medium text-[#514D5A]">
+              <p className="text-sm font-medium text-[#5B6058]">
                 Latest commit
               </p>
 
               {commits.length > 0 ? (
                 <>
-                  <p className="mt-1 text-sm text-[#706B79]">
+                  <p className="mt-1 text-sm text-[#666B63]">
                     {commits[0].message}
                   </p>
 
-                  <p className="mt-1 text-xs text-[#958F9B]">
+                  <p className="mt-1 text-xs text-[#92948A]">
                     {new Date(commits[0].createdAt).toLocaleString()}
                   </p>
                 </>
               ) : (
-                <p className="mt-1 text-xs text-[#958F9B]">
+                <p className="mt-1 text-xs text-[#92948A]">
                   No commits yet
                 </p>
               )}
@@ -638,7 +535,7 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
                 setCommitMessage("");
                 setCommitModalOpen(true);
               }}
-              className="rounded-lg border border-[#DCD2DC] px-4 py-2 text-sm text-[#706B79] transition hover:bg-[#F0E8EC] hover:text-[#302D3B]"
+              className="rounded-lg border border-[#E1E3E8] px-4 py-2 text-sm text-[#666B63] transition hover:bg-[#F0F1F4] hover:text-[#4F574F]"
             >
               Commit Changes
             </button>}
@@ -646,15 +543,15 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
           </div>
         </div>
 
-        <div className="mt-5 overflow-hidden rounded-xl border border-[#E8D9DE] bg-white">
+        <div className="mt-5 overflow-hidden rounded-xl border border-[#E5E7EC] bg-white">
 
-          <div className="border-b border-[#E8D9DE] px-5 py-4">
+          <div className="border-b border-[#E5E7EC] px-5 py-4">
 
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-[#706B79]">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-[#666B63]">
               Commit History
             </h2>
 
-            <p className="mt-1 text-xs text-[#958F9B]">
+            <p className="mt-1 text-xs text-[#92948A]">
               {commits.length}{" "}
               {commits.length === 1 ? "commit" : "commits"}
             </p>
@@ -664,7 +561,7 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
           {commits.length === 0 ? (
 
             <div className="px-5 py-10 text-center">
-              <p className="text-sm text-[#958F9B]">
+              <p className="text-sm text-[#92948A]">
                 No commits yet
               </p>
             </div>
@@ -674,7 +571,7 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
             <>
               <div className="max-h-[350px] overflow-y-auto">
 
-                <div className="divide-y divide-[#E8D9DE]">
+                <div className="divide-y divide-[#E5E7EC]">
 
                   {(showAllCommits
                     ? commits
@@ -683,24 +580,24 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
 
                     <div
                       key={commit.id}
-                      className="px-5 py-4 transition hover:bg-[#FFF8F1]"
+                      className="px-5 py-4 transition hover:bg-[#FAF8F1]"
                     >
 
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
                         <div className="min-w-0">
 
-                          <p className="font-medium text-[#302D3B]">
+                          <p className="font-medium text-[#4F574F]">
                             {commit.message}
                           </p>
 
-                          <p className="mt-1 text-xs text-[#958F9B]">
+                          <p className="mt-1 text-xs text-[#92948A]">
                             {new Date(commit.createdAt).toLocaleString()}
                           </p>
 
                         </div>
 
-                        <span className="shrink-0 rounded-md bg-[#FFF8F1] px-2 py-1 font-mono text-xs text-[#958F9B]">
+                        <span className="shrink-0 rounded-md bg-[#FAF8F1] px-2 py-1 font-mono text-xs text-[#92948A]">
                           {commit.id}
                         </span>
 
@@ -708,7 +605,7 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
 
                       {commit.parentId && (
 
-                        <p className="mt-2 text-xs text-[#A49DA8]">
+                        <p className="mt-2 text-xs text-[#92948A]">
                           Parent:{" "}
                           <span className="font-mono">
                             {commit.parentId}
@@ -726,13 +623,13 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
 
               {commits.length > 3 && (
 
-                <div className="border-t border-[#E8D9DE] px-5 py-4 text-center">
+                <div className="border-t border-[#E5E7EC] px-5 py-4 text-center">
 
                   <button
                     onClick={() =>
                       setShowAllCommits((current) => !current)
                     }
-                    className="rounded-lg border border-[#A9B9D3]/70 bg-[#A9B9D3]/5 px-5 py-2 text-sm font-medium text-[#7187AC] transition hover:bg-[#A9B9D3]/10 hover:text-[#8293B2]"
+                    className="rounded-lg border border-[#D4D7DD]/70 bg-[#D4D7DD]/5 px-5 py-2 text-sm font-medium text-[#697586] transition hover:bg-[#D4D7DD]/10 hover:text-[#727F8F]"
                   >
                     {showAllCommits
                       ? "View Less ↑"
@@ -753,9 +650,9 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
 
       {createModalOpen && (
 
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#687B65]/35 px-4">
 
-          <div className="w-full max-w-lg rounded-2xl border border-[#E8D9DE] bg-white p-6 shadow-2xl">
+          <div className="w-full max-w-lg rounded-2xl border border-[#E5E7EC] bg-white p-6 shadow-2xl">
 
             <div className="flex items-center justify-between">
 
@@ -765,7 +662,7 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
 
               <button
                 onClick={() => setCreateModalOpen(false)}
-                className="text-xl text-[#827C89] hover:text-[#302D3B]"
+                className="text-xl text-[#777B72] hover:text-[#4F574F]"
               >
                 ×
               </button>
@@ -779,7 +676,7 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
 
               <div>
 
-                <label className="mb-2 block text-sm font-medium text-[#514D5A]">
+                <label className="mb-2 block text-sm font-medium text-[#5B6058]">
                   File Name
                 </label>
 
@@ -793,14 +690,14 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
                     })
                   }
                   placeholder="README.md"
-                  className="w-full rounded-lg border border-[#DCD2DC] bg-[#FFF8F1] px-4 py-3 text-[#302D3B] outline-none placeholder:text-[#958F9B] focus:border-[#AEB6D8]"
+                  className="w-full rounded-lg border border-[#E1E3E8] bg-[#FAF8F1] px-4 py-3 text-[#4F574F] outline-none placeholder:text-[#92948A] focus:border-[#B7C0CB]"
                 />
 
               </div>
 
               <div>
 
-                <label className="mb-2 block text-sm font-medium text-[#514D5A]">
+                <label className="mb-2 block text-sm font-medium text-[#5B6058]">
                   File Path
                 </label>
 
@@ -814,10 +711,10 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
                     })
                   }
                   placeholder="src/index.js"
-                  className="w-full rounded-lg border border-[#DCD2DC] bg-[#FFF8F1] px-4 py-3 text-[#302D3B] outline-none placeholder:text-[#958F9B] focus:border-[#AEB6D8]"
+                  className="w-full rounded-lg border border-[#E1E3E8] bg-[#FAF8F1] px-4 py-3 text-[#4F574F] outline-none placeholder:text-[#92948A] focus:border-[#B7C0CB]"
                 />
 
-                <p className="mt-2 text-xs text-[#958F9B]">
+                <p className="mt-2 text-xs text-[#92948A]">
                   Example: src/components/App.jsx
                 </p>
 
@@ -825,7 +722,7 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
 
               <div>
 
-                <label className="mb-2 block text-sm font-medium text-[#514D5A]">
+                <label className="mb-2 block text-sm font-medium text-[#5B6058]">
                   Initial Content
                 </label>
 
@@ -839,7 +736,7 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
                   }
                   placeholder="Enter file contents..."
                   rows="8"
-                  className="w-full resize-none rounded-lg border border-[#DCD2DC] bg-[#FFF8F1] px-4 py-3 font-mono text-sm text-[#302D3B] outline-none placeholder:text-[#958F9B] focus:border-[#AEB6D8]"
+                  className="w-full resize-none rounded-lg border border-[#E1E3E8] bg-[#FAF8F1] px-4 py-3 font-mono text-sm text-[#4F574F] outline-none placeholder:text-[#92948A] focus:border-[#B7C0CB]"
                 />
 
               </div>
@@ -849,14 +746,14 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
                 <button
                   type="button"
                   onClick={() => setCreateModalOpen(false)}
-                  className="rounded-lg border border-[#DCD2DC] px-4 py-2 text-sm text-[#514D5A] hover:bg-[#F0E8EC]"
+                  className="rounded-lg border border-[#E1E3E8] px-4 py-2 text-sm text-[#5B6058] hover:bg-[#F0F1F4]"
                 >
                   Cancel
                 </button>
 
                 <button
                   type="submit"
-                  className="rounded-lg bg-[#B9BFDD] px-5 py-2 text-sm font-medium text-[#302D3B] hover:bg-[#A6AED1]"
+                  className="rounded-lg bg-[#E0E4EA] px-5 py-2 text-sm font-medium text-[#4F574F] hover:bg-[#B0BEAD]"
                 >
                   Create File
                 </button>
@@ -873,19 +770,19 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
 
       {commitModalOpen && (
 
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#687B65]/35 px-4">
 
-          <div className="w-full max-w-md rounded-2xl border border-[#E8D9DE] bg-white p-6 shadow-2xl">
+          <div className="w-full max-w-md rounded-2xl border border-[#E5E7EC] bg-white p-6 shadow-2xl">
 
             <div className="flex items-center justify-between">
 
-              <h2 className="text-xl font-semibold text-[#302D3B]">
+              <h2 className="text-xl font-semibold text-[#4F574F]">
                 Commit Changes
               </h2>
 
               <button
                 onClick={() => setCommitModalOpen(false)}
-                className="text-xl text-[#827C89] hover:text-[#302D3B]"
+                className="text-xl text-[#777B72] hover:text-[#4F574F]"
               >
                 ×
               </button>
@@ -899,7 +796,7 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
 
               <div>
 
-                <label className="mb-2 block text-sm font-medium text-[#514D5A]">
+                <label className="mb-2 block text-sm font-medium text-[#5B6058]">
                   Commit Message
                 </label>
 
@@ -910,20 +807,20 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
                     setCommitMessage(event.target.value)
                   }
                   placeholder="Describe your changes..."
-                  className="w-full rounded-lg border border-[#DCD2DC] bg-[#FFF8F1] px-4 py-3 text-[#302D3B] outline-none placeholder:text-[#958F9B] focus:border-[#AEB6D8]"
+                  className="w-full rounded-lg border border-[#E1E3E8] bg-[#FAF8F1] px-4 py-3 text-[#4F574F] outline-none placeholder:text-[#92948A] focus:border-[#B7C0CB]"
                 />
 
               </div>
 
-              <div className="rounded-lg border border-[#E8D9DE] bg-[#FFF8F1] p-4">
+              <div className="rounded-lg border border-[#E5E7EC] bg-[#FAF8F1] p-4">
 
-                <p className="text-xs uppercase tracking-wider text-[#958F9B]">
+                <p className="text-xs uppercase tracking-wider text-[#92948A]">
                   Snapshot
                 </p>
 
-                <p className="mt-2 text-sm text-[#706B79]">
+                <p className="mt-2 text-sm text-[#666B63]">
                   This commit will store the current state of{" "}
-                  <span className="text-[#302D3B]">
+                  <span className="text-[#4F574F]">
                     {files.length}
                   </span>{" "}
                   {files.length === 1 ? "file" : "files"}.
@@ -936,7 +833,7 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
                 <button
                   type="button"
                   onClick={() => setCommitModalOpen(false)}
-                  className="rounded-lg border border-[#DCD2DC] px-4 py-2 text-sm text-[#514D5A] hover:bg-[#F0E8EC]"
+                  className="rounded-lg border border-[#E1E3E8] px-4 py-2 text-sm text-[#5B6058] hover:bg-[#F0F1F4]"
                 >
                   Cancel
                 </button>
@@ -944,7 +841,7 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
                 <button
                   type="submit"
                   disabled={committing}
-                  className="rounded-lg bg-[#B9BFDD] px-5 py-2 text-sm font-medium text-[#302D3B] hover:bg-[#A6AED1] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg bg-[#E0E4EA] px-5 py-2 text-sm font-medium text-[#4F574F] hover:bg-[#B0BEAD] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {committing ? "Committing..." : "Create Commit"}
                 </button>

@@ -23,5 +23,8 @@
   ],
   "devDependencies": {
     "typescript": "^7.0.2"
+  },
+  "allowScripts": {
+    "argon2@0.45.2": true
   }
 }

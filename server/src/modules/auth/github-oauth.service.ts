@@ -26,7 +26,7 @@ export function getGitHubAuthorizationUrl(state: string): string {
 }
 
 function getCallbackUrl(): string {
-  return "http://localhost:5000/api/v1/auth/github/callback";
+  return "http://localhost:5001/api/v1/auth/github/callback";
 }
 
 export async function exchangeGitHubCode(code: string) {

@@ -1,6 +1,6 @@
 
 import { useEffect, useState } from "react";
-import { UserRound, Settings as SettingsIcon, Palette, Bell, ShieldCheck, GitBranch, ChevronRight, Camera, LockKeyhole, Mail, Globe, Trash2, Monitor, Moon, Sun, Save, Eye, EyeOff, KeyRound, CheckCircle2, Upload,} from "lucide-react";
+import { UserRound, Settings as SettingsIcon, Palette, Bell, ShieldCheck, GitBranch, ChevronRight, Camera, LockKeyhole, Mail, Globe, Trash2, Sun, Moon, Save, Eye, EyeOff, KeyRound, CheckCircle2, Upload,} from "lucide-react";
 import { changeAccountPassword, updateAccountProfile, updateProfileAvatar } from "../services/api";
 
 const readStorage = (key, fallback) => {
@@ -34,17 +34,13 @@ const defaultRepository = {
   autoInit: true,
 };
 
-const SettingPage = ({ user, onUserUpdate }) => {
+const SettingPage = ({ user, onUserUpdate, theme, onThemeChange }) => {
   const [active, setActive] = useState("Profile");
 
   const [profile, setProfile] = useState(() => ({ ...defaultProfile, name: user?.fullName || "", username: user?.username || "", email: user?.email || "", ...readStorage("hakiProfile", {}) }));
 
   const [profileImage, setProfileImage] = useState(
     () => user?.avatarDataUrl || localStorage.getItem("hakiProfileImage") || ""
-  );
-
-  const [theme, setTheme] = useState(
-    () => localStorage.getItem("hakiTheme") || "Light"
   );
 
   const [notifications, setNotifications] = useState(() =>
@@ -94,29 +90,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
 
   // Common input style
   const inputClass =
-    "w-full border border-gray-200 rounded-lg px-4 py-3 text-sm outline-none focus:border-black focus:ring-1 focus:ring-black/10 transition bg-white text-gray-900";
-
-  // Apply theme
-  useEffect(() => {
-    const applyTheme = () => {
-      const dark =
-        theme === "Dark" ||
-        (theme === "System" &&
-          window.matchMedia("(prefers-color-scheme: dark)").matches);
-
-      document.documentElement.classList.toggle("dark", dark);
-    };
-
-    applyTheme();
-    localStorage.setItem("hakiTheme", theme);
-
-    if (theme === "System") {
-      const media = window.matchMedia("(prefers-color-scheme: dark)");
-      media.addEventListener("change", applyTheme);
-
-      return () => media.removeEventListener("change", applyTheme);
-    }
-  }, [theme]);
+    "w-full border border-[#E1E3E8] rounded-lg px-4 py-3 text-sm outline-none focus:border-[#D4D7DD] focus:ring-1 focus:ring-[#D4D7DD]/30 transition bg-white text-[#4F574F]";
 
   // Update profile fields
   const updateProfile = (e) => {
@@ -335,7 +309,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
       aria-checked={checked}
       onClick={onChange}
       className={`w-11 h-6 rounded-full relative shrink-0 transition-colors ${
-        checked ? "bg-black" : "bg-gray-300"
+        checked ? "bg-[#727F8F]" : "bg-[#D9DCE2]"
       }`}
     >
       <span
@@ -367,19 +341,19 @@ const SettingPage = ({ user, onUserUpdate }) => {
   );
 
   return (
-    <div className="min-h-screen bg-[#FFF8F1] dark:bg-[#09090b] text-gray-900 dark:text-gray-100 transition-colors">
+    <div className="min-h-screen bg-[#FAF8F1]  text-gray-900  transition-colors">
 
       <div className="max-w-7xl mx-auto px-4 sm:px-8 py-8">
 
         {/* PAGE HEADING */}
         <div className="mb-8">
-          <h1 className="text-2xl font-bold dark:text-white">
+          <h1 className="text-2xl font-bold ">
             Settings
           </h1>
           <p className="text-sm text-gray-500 mt-1">
             Manage your account and workspace preferences.
           </p>
-          <p className="mt-3 max-w-3xl rounded-xl border border-[#E8D9DE] bg-white/75 px-4 py-3 text-xs leading-5 text-[#706B79]">Frontend preview: data stays in this browser. It does not provide production account security or send email.</p>
+          <p className="mt-3 max-w-3xl rounded-xl border border-[#E5E7EC] bg-white/75 px-4 py-3 text-xs leading-5 text-[#666B63]">Frontend preview: data stays in this browser. It does not provide production account security or send email.</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-[230px_minmax(0,1fr)] gap-8">
@@ -408,8 +382,8 @@ const SettingPage = ({ user, onUserUpdate }) => {
                         }}
                         className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${
                           selected
-                            ? "bg-gray-100 dark:bg-gray-800 text-black dark:text-white font-semibold"
-                            : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+                            ? "bg-[#F0F1F4]  text-[#4F574F]  font-semibold"
+                            : "text-gray-600  hover:bg-[#F0F1F4] "
                         }`}
                       >
                         <Icon size={18} />
@@ -430,7 +404,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
           {/* MAIN CONTENT */}
           <main className="min-w-0">
 
-            <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-gray-800 rounded-xl p-5 sm:p-8">
+            <div className="bg-white  border border-gray-200  rounded-xl p-5 sm:p-8">
 
               {/* PROFILE */}
               {active === "Profile" && (
@@ -444,7 +418,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                   <div className="flex flex-wrap items-center gap-5 mb-9">
 
                     <div className="relative">
-                      <div className="w-24 h-24 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center">
+                      <div className="w-24 h-24 rounded-full overflow-hidden bg-[#F0F1F4]  border border-gray-200  flex items-center justify-center">
                         {profileImage ? (
                           <img
                             src={profileImage}
@@ -458,7 +432,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
 
                       <label
                         htmlFor="profileUpload"
-                        className="absolute bottom-0 right-0 w-8 h-8 bg-black text-white rounded-full flex items-center justify-center cursor-pointer border-2 border-white hover:bg-gray-700 transition"
+                        className="absolute bottom-0 right-0 w-8 h-8 bg-[#E0E4EA] text-[#4F574F] rounded-full flex items-center justify-center cursor-pointer border-2 border-white hover:bg-[#EEF0F4] transition"
                       >
                         <Camera size={15} />
                       </label>
@@ -473,7 +447,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                     </div>
 
                     <div>
-                      <h3 className="font-semibold text-sm dark:text-white">
+                      <h3 className="font-semibold text-sm ">
                         Profile picture
                       </h3>
 
@@ -484,7 +458,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                       <div className="flex flex-wrap gap-2 mt-3">
                         <label
                           htmlFor="profileUpload"
-                          className="inline-flex items-center gap-2 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800"
+                          className="inline-flex items-center gap-2 border border-gray-200  rounded-lg px-3 py-2 text-sm font-medium cursor-pointer hover:bg-[#F7F5EE] "
                         >
                           <Upload size={15} />
                           Upload photo
@@ -493,7 +467,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                         {profileImage && (
                           <button
                             onClick={removeImage}
-                            className="inline-flex items-center gap-2 border border-red-200 text-red-600 rounded-lg px-3 py-2 text-sm hover:bg-red-50"
+                            className="inline-flex items-center gap-2 border border-[#E2D8C8] text-[#8C7967] rounded-lg px-3 py-2 text-sm hover:bg-[#F1E8DD]"
                           >
                             <Trash2 size={15} />
                             Remove
@@ -508,7 +482,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                   </div>
 
                   {imageError && (
-                    <p className="text-sm text-red-600 mb-5">
+                    <p className="text-sm text-[#8C7967] mb-5">
                       {imageError}
                     </p>
                   )}
@@ -523,7 +497,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                       ["location", "Location", "Enter location"],
                     ].map(([key, label, placeholder]) => (
                       <div key={key}>
-                        <label className="text-sm font-semibold dark:text-gray-200">
+                        <label className="text-sm font-semibold ">
                           {label}
                         </label>
 
@@ -533,13 +507,13 @@ const SettingPage = ({ user, onUserUpdate }) => {
                           value={profile[key] || ""}
                           onChange={updateProfile}
                           placeholder={placeholder}
-                          className={`${inputClass} mt-2 dark:bg-[#181818] dark:border-gray-700 dark:text-white`}
+                          className={`${inputClass} mt-2   `}
                         />
                       </div>
                     ))}
 
                     <div>
-                      <label className="text-sm font-semibold dark:text-gray-200">
+                      <label className="text-sm font-semibold ">
                         Bio
                       </label>
 
@@ -550,7 +524,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                         rows={4}
                         maxLength={250}
                         placeholder="Write something about yourself..."
-                        className={`${inputClass} mt-2 resize-none dark:bg-[#181818] dark:border-gray-700 dark:text-white`}
+                        className={`${inputClass} mt-2 resize-none   `}
                       />
 
                       <p className="text-xs text-gray-400 text-right mt-1">
@@ -571,7 +545,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
 
                   <div className="space-y-5">
 
-                    <div className="p-5 border border-gray-200 dark:border-gray-700 rounded-xl">
+                    <div className="p-5 border border-gray-200  rounded-xl">
                       <div className="flex items-center gap-3">
                         <Mail size={21} />
                         <div>
@@ -585,7 +559,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                       </div>
                     </div>
 
-                    <div className="p-5 border border-gray-200 dark:border-gray-700 rounded-xl">
+                    <div className="p-5 border border-gray-200  rounded-xl">
                       <div className="flex items-center gap-3">
                         <Globe size={21} />
                         <div>
@@ -599,7 +573,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                       </div>
                     </div>
 
-                    <div className="p-5 border border-gray-200 dark:border-gray-700 rounded-xl">
+                    <div className="p-5 border border-gray-200  rounded-xl">
                       <h3 className="font-semibold text-sm">
                         Account username
                       </h3>
@@ -608,8 +582,8 @@ const SettingPage = ({ user, onUserUpdate }) => {
                       </p>
                     </div>
 
-                    <div className="p-5 border border-red-200 rounded-xl">
-                      <div className="flex items-center gap-2 text-red-600 font-semibold">
+                    <div className="p-5 border border-[#E2D8C8] rounded-xl">
+                      <div className="flex items-center gap-2 text-[#8C7967] font-semibold">
                         <Trash2 size={18} />
                         Delete account
                       </div>
@@ -630,16 +604,15 @@ const SettingPage = ({ user, onUserUpdate }) => {
                     description="Customize how Haki looks on your device."
                   />
 
-                  <h3 className="text-sm font-semibold mb-5 dark:text-white">
+                  <h3 className="text-sm font-semibold mb-5 ">
                     Interface theme
                   </h3>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 
                     {[
-                      { name: "Light", icon: Sun },
-                      { name: "Dark", icon: Moon },
-                      { name: "System", icon: Monitor },
+                      { name: "Light", value: "light", icon: Sun, accent: "text-[#867C70]" },
+                      { name: "Dark", value: "dark", icon: Moon, accent: "text-[#7E8998]" },
                     ].map((item) => {
                       const Icon = item.icon;
 
@@ -647,28 +620,24 @@ const SettingPage = ({ user, onUserUpdate }) => {
                         <button
                           key={item.name}
                           onClick={() => {
-                            setTheme(item.name);
+                            onThemeChange(item.value);
                             setSaved(false);
                           }}
                           className={`border rounded-xl p-5 text-left transition ${
-                            theme === item.name
-                              ? "border-black dark:border-white bg-gray-50 dark:bg-gray-800"
-                              : "border-gray-200 dark:border-gray-700 hover:border-gray-400"
+                            theme === item.value
+                              ? "border-[#687386] bg-[#687386]/10"
+                              : "border-[#E1E3E8] hover:border-[#D0D5DE]"
                           }`}
                         >
-                          <Icon size={25} className="mb-5" />
+                          <Icon size={25} className={`mb-5 ${item.accent}`} />
 
                           <p className="font-semibold text-sm">
                             {item.name}
                           </p>
 
-                          <p className="text-xs text-gray-400 mt-1">
-                            {item.name === "System"
-                              ? "Follow device settings"
-                              : `${item.name} mode`}
-                          </p>
+                          <p className="text-xs text-gray-400 mt-1">Use the {item.name.toLowerCase()} color theme</p>
 
-                          {theme === item.name && (
+                          {theme === item.value && (
                             <CheckCircle2 size={17} className="mt-4" />
                           )}
                         </button>
@@ -678,7 +647,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                   </div>
 
                   <p className="text-xs text-gray-400 mt-6">
-                    Theme preference is applied to this page. Add the same dark-mode classes to your other application components for a consistent experience.
+                    Your choice is saved and follows you throughout HAKI.
                   </p>
                 </>
               )}
@@ -736,8 +705,8 @@ const SettingPage = ({ user, onUserUpdate }) => {
                     description="Keep your Haki account secure."
                   />
 
-                  <div className="flex items-start gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl mb-7">
-                    <div className="w-10 h-10 bg-white dark:bg-gray-700 rounded-lg flex items-center justify-center">
+                  <div className="flex items-start gap-4 p-4 bg-[#F7F5EE]  rounded-xl mb-7">
+                    <div className="w-10 h-10 bg-white  rounded-lg flex items-center justify-center">
                       <ShieldCheck size={22} />
                     </div>
 
@@ -762,7 +731,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                       ["confirmPassword", "Confirm new password"],
                     ].map(([key, label]) => (
                       <div key={key}>
-                        <label className="text-sm font-semibold dark:text-gray-200">
+                        <label className="text-sm font-semibold ">
                           {label}
                         </label>
 
@@ -780,7 +749,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                             placeholder={`Enter ${label.toLowerCase()}`}
                             minLength={key !== "currentPassword" ? 8 : undefined}
                             required
-                            className={`${inputClass} pl-11 pr-12 dark:bg-[#181818] dark:border-gray-700 dark:text-white`}
+                            className={`${inputClass} pl-11 pr-12   `}
                           />
                         </div>
                       </div>
@@ -789,7 +758,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                     <button
                       type="button"
                       onClick={() => setShowPasswords(!showPasswords)}
-                      className="flex items-center gap-2 text-xs text-gray-500 hover:text-black dark:hover:text-white"
+                      className="flex items-center gap-2 text-xs text-gray-500 hover:text-[#4F574F] "
                     >
                       {showPasswords ? (
                         <EyeOff size={15} />
@@ -800,7 +769,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                       {showPasswords ? "Hide passwords" : "Show passwords"}
                     </button>
 
-                    <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                    <div className="bg-[#F7F5EE]  rounded-lg p-4">
                       <p className="text-xs font-semibold mb-2">
                         Password requirements
                       </p>
@@ -815,8 +784,8 @@ const SettingPage = ({ user, onUserUpdate }) => {
                     {passwordMessage.text && (
                       <div className={`p-3 rounded-lg text-sm ${
                         passwordMessage.type === "success"
-                          ? "bg-green-50 text-green-700"
-                          : "bg-red-50 text-red-600"
+                          ? "bg-[#EEF0F4] text-[#637080]"
+                          : "bg-[#F1E8DD] text-[#8C7967]"
                       }`}>
                         {passwordMessage.text}
                       </div>
@@ -825,7 +794,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                     <button
                       type="submit"
                       disabled={passwordLoading}
-                      className="bg-black text-white rounded-lg px-5 py-3 text-sm font-semibold hover:bg-gray-800 disabled:opacity-50 flex items-center gap-2"
+                      className="bg-[#E0E4EA] text-[#4F574F] rounded-lg px-5 py-3 text-sm font-semibold hover:bg-[#E8EBF0] disabled:opacity-50 flex items-center gap-2"
                     >
                       <LockKeyhole size={16} />
                       {passwordLoading
@@ -848,7 +817,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                   <div className="max-w-xl space-y-7">
 
                     <div>
-                      <label className="text-sm font-semibold dark:text-white">
+                      <label className="text-sm font-semibold ">
                         Default branch name
                       </label>
 
@@ -861,7 +830,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                           });
                           setSaved(false);
                         }}
-                        className={`${inputClass} mt-2 dark:bg-[#181818] dark:border-gray-700 dark:text-white`}
+                        className={`${inputClass} mt-2   `}
                         placeholder="main"
                       />
 
@@ -871,7 +840,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                     </div>
 
                     <div>
-                      <label className="text-sm font-semibold dark:text-white">
+                      <label className="text-sm font-semibold ">
                         Default visibility
                       </label>
 
@@ -884,7 +853,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                           });
                           setSaved(false);
                         }}
-                        className={`${inputClass} mt-2 dark:bg-[#181818] dark:border-gray-700 dark:text-white`}
+                        className={`${inputClass} mt-2   `}
                       >
                         <option>Private</option>
                         <option>Public</option>
@@ -909,11 +878,11 @@ const SettingPage = ({ user, onUserUpdate }) => {
               )}
 
               {/* FOOTER ACTIONS */}
-              <div className="mt-10 pt-6 border-t border-gray-200 dark:border-gray-800 flex flex-wrap items-center justify-between gap-4">
+              <div className="mt-10 pt-6 border-t border-gray-200  flex flex-wrap items-center justify-between gap-4">
 
                 <div>
                   {message && (
-                    <p className="text-sm text-green-600">
+                    <p className="text-sm text-[#637080]">
                       {message}
                     </p>
                   )}
@@ -932,7 +901,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                         ? saveProfile
                         : saveSettings
                     }
-                    className="bg-black text-white rounded-lg px-5 py-3 text-sm font-semibold flex items-center gap-2 hover:bg-gray-800 transition"
+                    className="bg-[#E0E4EA] text-[#4F574F] rounded-lg px-5 py-3 text-sm font-semibold flex items-center gap-2 hover:bg-[#E8EBF0] transition"
                   >
                     <Save size={16} />
                     Save changes

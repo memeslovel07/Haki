@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, FileCode2, FileText, Folder, FolderOpen } from "lucide-react";
 
 function DirectoryTree({ files, selectedFileId, onFileSelect }) {
   const [expandedFolders, setExpandedFolders] = useState({});
@@ -38,7 +39,7 @@ function DirectoryTree({ files, selectedFileId, onFileSelect }) {
     const sortedFiles = [...node.files].sort((a, b) => a.displayName.localeCompare(b.displayName));
 
     return (
-      <div className="space-y-1">
+      <div>
         {folderEntries.map(([folderName, folderNode]) => {
           const folderPath = parentPath ? `${parentPath}/${folderName}` : folderName;
           const isExpanded = expandedFolders[folderPath] ?? true;
@@ -48,12 +49,12 @@ function DirectoryTree({ files, selectedFileId, onFileSelect }) {
               <button
                 type="button"
                 onClick={() => toggleFolder(folderPath)}
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-[#514D5A] transition hover:bg-white hover:text-[#302D3B]"
+                className="flex w-full items-center gap-2 border-b border-[#E5E7EC] px-5 py-3 text-left text-sm text-[#5B6058] transition hover:bg-[#FAF8F1] hover:text-[#4F574F]"
                 style={{ paddingLeft: `${12 + depth * 16}px` }}
               >
-                <span>{isExpanded ? "📂" : "📁"}</span>
+                {isExpanded ? <ChevronDown size={15} className="text-[#92948A]"/> : <ChevronRight size={15} className="text-[#92948A]"/>}
+                {isExpanded ? <FolderOpen size={16} className="text-[#7F8C77]"/> : <Folder size={16} className="text-[#7F8C77]"/>}
                 <span className="truncate">{folderName}</span>
-                <span className="ml-auto text-xs text-[#958F9B]">{isExpanded ? "−" : "+"}</span>
               </button>
 
               {isExpanded && (
@@ -68,14 +69,14 @@ function DirectoryTree({ files, selectedFileId, onFileSelect }) {
             key={file.id}
             type="button"
             onClick={() => onFileSelect(file)}
-            className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
+            className={`flex w-full items-center gap-2 border-b border-[#E5E7EC] px-5 py-3 text-left text-sm transition ${
               selectedFileId === file.id
-                ? "bg-[#F0E8EC] text-[#302D3B]"
-                : "text-[#706B79] hover:bg-white hover:text-[#302D3B]"
+                ? "bg-[#F0F1F4] text-[#438C89]"
+                : "text-[#438C89] hover:bg-[#FAF8F1] hover:underline"
             }`}
             style={{ paddingLeft: `${12 + depth * 16}px` }}
           >
-            <span>{file.displayName.toLowerCase().endsWith(".svg") ? "🖼️" : "📄"}</span>
+            {file.displayName.toLowerCase().endsWith(".md") || file.displayName.toLowerCase().endsWith(".txt") ? <FileText size={16} className="text-[#92948A]"/> : <FileCode2 size={16} className="text-[#92948A]"/>}
             <span className="truncate">{file.displayName}</span>
           </button>
         ))}
@@ -84,7 +85,7 @@ function DirectoryTree({ files, selectedFileId, onFileSelect }) {
   }
 
   if (files.length === 0) {
-    return <p className="px-3 py-4 text-sm text-[#958F9B]">No files available</p>;
+    return <p className="px-3 py-4 text-sm text-[#92948A]">No files available</p>;
   }
 
   return <div className="space-y-1">{renderNode(tree)}</div>;
