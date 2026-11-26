@@ -1,6 +1,6 @@
 import { Link, NavLink } from "react-router-dom";
 import UserAvatar from "./UserAvatar";
-const links = [["/", "Repositories"], ["/setting", "Settings"], ["/import", "Import"], ["/about", "About"]];
+const links = [["/", "Repositories"], ["/teams", "Teams"], ["/setting", "Settings"], ["/import", "Import"], ["/about", "About"]];
 export default function WorkspaceHeader({ user, onUserUpdate, onSignOut, title }) {
   return <header className="sticky top-0 z-30 border-b border-[#E8D9DE] bg-[#FFF8F1]/95 px-4 py-3 backdrop-blur sm:px-8"><div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
     <div className="flex items-center gap-3"><Link to="/" className="text-2xl font-black tracking-tight">HAKI<span className="text-[#7187AC]">.</span></Link><span className="hidden text-[#D2C7D0] sm:inline">/</span><span className="hidden text-sm text-[#706B79] sm:inline">{title}</span></div>

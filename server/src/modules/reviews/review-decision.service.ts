@@ -1,11 +1,10 @@
-
 import { prisma } from "../../lib/prisma.js";
 
 export type SubmitReviewResult =
   | { success: true; reviewId: string }
   | {
       success: false;
-      code: "NOT_FOUND" | "INVALID_STATE" | "COMMIT_CHANGED";
+      code: "NOT_FOUND" | "INVALID_STATE" | "COMMIT_CHANGED" | "SELF_REVIEW";
     };
 
 export async function submitSubmissionReview(
@@ -17,11 +16,21 @@ export async function submitSubmissionReview(
   return prisma.$transaction(async (tx) => {
     const submission = await tx.submission.findUnique({
       where: { id: submissionId },
-      select: { id: true, status: true, headCommitSha: true },
+      select: {
+        id: true,
+        status: true,
+        headCommitSha: true,
+        submittedById: true,
+        repository: { select: { teamId: true } },
+      },
     });
 
     if (!submission) {
       return { success: false, code: "NOT_FOUND" };
+    }
+
+    if (decision === "APPROVED" && submission.submittedById === reviewerId) {
+      return { success: false, code: "SELF_REVIEW" };
     }
 
     const reviewableStatuses = [
@@ -31,7 +40,11 @@ export async function submitSubmissionReview(
       "REJECTED",
     ] as const;
 
-    if (!reviewableStatuses.includes(submission.status as (typeof reviewableStatuses)[number])) {
+    if (
+      !reviewableStatuses.includes(
+        submission.status as (typeof reviewableStatuses)[number],
+      )
+    ) {
       return { success: false, code: "INVALID_STATE" };
     }
 
@@ -60,6 +73,22 @@ export async function submitSubmissionReview(
         body,
       },
       select: { id: true },
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        teamId: submission.repository.teamId,
+        actorId: reviewerId,
+        action: `REVIEW_${decision}`,
+        entityType: "Submission",
+        entityId: submissionId,
+        metadata: {
+          reviewId: review.id,
+          reviewedCommitSha: submission.headCommitSha,
+          previousStatus: submission.status,
+          newStatus: nextStatus,
+        },
+      },
     });
 
     return { success: true, reviewId: review.id };

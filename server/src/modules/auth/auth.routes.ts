@@ -13,9 +13,11 @@ import {
 } from "../../middleware/auth-rate-limit.middleware.js";
 
 import { validateRequestOrigin } from "../../middleware/csrf.middleware.js";
+import { authenticateAccessToken } from "../../middleware/auth.middleware.js";
 
 import {
   startGitHubOAuth,
+  startGitHubAccountLink,
   handleGitHubCallback,
 } from "./github-oauth.controller.js";
 
@@ -49,6 +51,7 @@ router.post(
 );
 
 router.get("/github", startGitHubOAuth);
+router.get("/github/link", authenticateAccessToken, startGitHubAccountLink);
 router.get("/github/callback", handleGitHubCallback);
 
 export default router;

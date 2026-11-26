@@ -1,6 +1,7 @@
 // Local-only demo store. Use a secure backend for real accounts and shared data.
 const DB_KEY = "haki_frontend_demo_v1";
 const TOKEN_KEY = "haki_token";
+const ACCESS_TOKEN_KEY = "haki_access_token";
 const avatars = ["member-1", "member-2", "member-3", "member-4", "member-5", "member-6"];
 
 function dbRead() {
@@ -32,10 +33,14 @@ function startSession(db, user) {
   const token = id("local");
   db.sessions[token] = user.id;
   dbWrite(db);
+  // GitHub's callback restores the backend session through this same path as
+  // password login; persist the local workspace token for all repository APIs.
+  localStorage.setItem(TOKEN_KEY, token);
   return { token, user: safeUser(user) };
 }
 
 const AUTH_BASE = "http://localhost:5000/api/v1/auth";
+const API_BASE = "/api/v1";
 
 function localUserFromBackend(backendUser) {
   const db = dbRead();
@@ -81,7 +86,58 @@ async function authRequest(endpoint, options = {}) {
   return body?.data ?? body;
 }
 
-function establishLocalSession(backendUser) {
+export async function getGitHubRepositories() {
+  let token = localStorage.getItem(ACCESS_TOKEN_KEY);
+  if (!token) throw new Error("Sign in to HAKI to load GitHub repositories.");
+  const request = (accessToken) => fetch("/api/v1/github/me/repositories", { headers: { Authorization: `Bearer ${accessToken}` }, credentials: "include" });
+  let response = await request(token);
+  if (response.status === 401) {
+    await refreshBackendSession();
+    token = localStorage.getItem(ACCESS_TOKEN_KEY);
+    if (!token) throw new Error("Sign in to HAKI to load GitHub repositories.");
+    response = await request(token);
+  }
+  const body = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(body?.error?.message || "GitHub repositories could not be loaded.");
+  return { data: body.data ?? [] };
+}
+
+async function teamRequest(path, options = {}) {
+  let token = localStorage.getItem(ACCESS_TOKEN_KEY);
+  if (!token) throw new Error("Sign in to manage teams.");
+  const send = (accessToken) => fetch(`${API_BASE}/teams${path}`, {
+    credentials: "include",
+    ...options,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}`, ...(options.headers || {}) },
+  });
+  let response = await send(token);
+  if (response.status === 401) {
+    await refreshBackendSession();
+    token = localStorage.getItem(ACCESS_TOKEN_KEY);
+    if (!token) throw new Error("Sign in to manage teams.");
+    response = await send(token);
+  }
+  const body = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(body?.error?.message || "Team request failed.");
+  return body?.data ?? body;
+}
+
+export const getTeams = () => teamRequest("");
+export const createTeam = (name) => teamRequest("", { method: "POST", body: JSON.stringify({ name }) });
+export const getMyTeamInvitations = () => teamRequest("/invitations");
+export const respondToTeamInvitation = (invitationId, accept) => teamRequest(`/invitations/${encodeURIComponent(invitationId)}/respond`, { method: "POST", body: JSON.stringify({ accept }) });
+export const getTeamMembers = (teamId) => teamRequest(`/${encodeURIComponent(teamId)}/members`);
+export const inviteTeamMember = (teamId, email, role) => teamRequest(`/${encodeURIComponent(teamId)}/invitations`, { method: "POST", body: JSON.stringify({ email, role }) });
+export const removeTeamMember = (teamId, userId) => teamRequest(`/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`, { method: "DELETE" });
+export const changeTeamMemberRole = (teamId, userId, role) => teamRequest(`/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}/role`, { method: "PATCH", body: JSON.stringify({ role }) });
+export const leaveTeam = (teamId) => teamRequest(`/${encodeURIComponent(teamId)}/leave`, { method: "POST" });
+export const transferTeamOwnership = (teamId, userId) => teamRequest(`/${encodeURIComponent(teamId)}/ownership`, { method: "POST", body: JSON.stringify({ userId }) });
+export const getTeamSettings = (teamId) => teamRequest(`/${encodeURIComponent(teamId)}/settings`);
+export const updateTeamSettings = (teamId, settings) => teamRequest(`/${encodeURIComponent(teamId)}/settings`, { method: "PUT", body: JSON.stringify(settings) });
+
+function establishLocalSession(authResult) {
+  const backendUser = authResult.user;
+  if (typeof authResult.accessToken === "string") localStorage.setItem(ACCESS_TOKEN_KEY, authResult.accessToken);
   const db = dbRead();
   const user = localUserFromBackend(backendUser);
   return startSession(dbRead(), user);
@@ -105,7 +161,7 @@ export async function loginAccount({ email, password }) {
     body: JSON.stringify({ email: address, password }),
   });
 
-  return establishLocalSession(result.user);
+  return establishLocalSession(result);
 }
 
 let refreshPromise = null;
@@ -113,7 +169,7 @@ let refreshPromise = null;
 export function refreshBackendSession() {
   if (!refreshPromise) {
     refreshPromise = authRequest("/refresh", { method: "POST" })
-      .then((result) => establishLocalSession(result.user))
+      .then((result) => establishLocalSession(result))
       .finally(() => {
         refreshPromise = null;
       });
@@ -140,6 +196,7 @@ export async function logoutAccount() {
     if (token) delete db.sessions[token];
     dbWrite(db);
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(ACCESS_TOKEN_KEY);
   }
 }
 
@@ -183,7 +240,10 @@ export async function updateAccountProfile(profile) {
 
 export async function getRepositories() {
   const db = dbRead(); const user = requireUser(db);
-  return { data: db.repositories.filter((repo) => repo.ownerId === user.id || repo.visibility === "public") };
+  // This endpoint backs the signed-in user's "Your repositories" dashboard.
+  // Public visibility permits direct viewing, but must not mix another
+  // account's repositories into this personal workspace list.
+  return { data: db.repositories.filter((repo) => repo.ownerId === user.id) };
 }
 export async function getRepository(repoId) {
   const db = dbRead(); const user = requireUser(db);

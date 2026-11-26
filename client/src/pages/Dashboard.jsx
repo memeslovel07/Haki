@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { FolderGit2, Globe2, LockKeyhole, Search } from "lucide-react";
+import { ExternalLink, FolderGit2, Globe2, LockKeyhole, Search, Users } from "lucide-react";
 
 import {
   getRepositories,
+  getGitHubRepositories,
   createRepository,
   updateRepository,
   deleteRepository,
@@ -17,6 +18,8 @@ function Dashboard({ user, onUserUpdate, onSignOut }) {
   const navigate = useNavigate();
 
   const [repositories, setRepositories] = useState([]);
+  const [githubRepositories, setGithubRepositories] = useState([]);
+  const [githubError, setGithubError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
@@ -40,6 +43,14 @@ function Dashboard({ user, onUserUpdate, onSignOut }) {
 
       const response = await getRepositories();
       setRepositories(response.data);
+      try {
+        const githubResponse = await getGitHubRepositories();
+        setGithubRepositories(githubResponse.data);
+        setGithubError("");
+      } catch (githubLoadError) {
+        setGithubRepositories([]);
+        setGithubError(githubLoadError.message || "GitHub repositories could not be loaded.");
+      }
     } catch (error) {
       setError(error.message || "Failed to load repositories.");
     } finally {
@@ -192,6 +203,7 @@ function Dashboard({ user, onUserUpdate, onSignOut }) {
           </div>
 
           <nav aria-label="Workspace" className="flex basis-full gap-1 overflow-x-auto whitespace-nowrap pb-1 lg:hidden">
+            <Link to="/teams" className="rounded-lg px-3 py-2 text-sm font-medium text-[#706B79] hover:bg-white">Teams</Link>
             <Link to="/setting" className="rounded-lg px-3 py-2 text-sm font-medium text-[#706B79] hover:bg-white">Settings</Link>
             <Link to="/import" className="rounded-lg px-3 py-2 text-sm font-medium text-[#706B79] hover:bg-white">Import</Link>
             <Link to="/about" className="rounded-lg px-3 py-2 text-sm font-medium text-[#706B79] hover:bg-white">About</Link>
@@ -230,16 +242,19 @@ function Dashboard({ user, onUserUpdate, onSignOut }) {
 
             </div>
 
-            <button
-              onClick={openCreateModal}
-              className="group inline-flex shrink-0 items-center justify-center gap-3 rounded-xl border border-[#C3C6DF] bg-[#B9BFDD] px-6 py-4 text-sm font-semibold text-[#302D3B] shadow-[0_0_30px_rgba(37,99,235,0.25)] transition duration-300 hover:-translate-y-1 hover:bg-[#AEB6D8] hover:shadow-[0_0_40px_rgba(37,99,235,0.45)]"
-            >
-              <span className="text-xl">+</span>
-              New Repository
-              <span className="transition duration-300 group-hover:translate-x-1">
-                →
-              </span>
-            </button>
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={openCreateModal}
+                className="group inline-flex shrink-0 items-center justify-center gap-3 rounded-xl border border-[#C3C6DF] bg-[#B9BFDD] px-6 py-4 text-sm font-semibold text-[#302D3B] shadow-[0_0_30px_rgba(37,99,235,0.25)] transition duration-300 hover:-translate-y-1 hover:bg-[#AEB6D8] hover:shadow-[0_0_40px_rgba(37,99,235,0.45)]"
+              >
+                <span className="text-xl">+</span>
+                New Repository
+                <span className="transition duration-300 group-hover:translate-x-1">→</span>
+              </button>
+              <Link to="/teams" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-[#DCD2DC] bg-white/80 px-5 py-4 text-sm font-semibold text-[#514D5A] transition hover:-translate-y-1 hover:bg-white">
+                <Users size={17} />Manage Teams
+              </Link>
+            </div>
 
           </div>
 
@@ -271,6 +286,14 @@ function Dashboard({ user, onUserUpdate, onSignOut }) {
         )}
 
         <section>
+
+          <div className="mb-8 rounded-2xl border border-[#E8D9DE] bg-white/90 p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div><h2 className="text-lg font-semibold text-[#302D3B]">GitHub repositories</h2><p className="mt-1 text-sm text-[#827C89]">Public repositories on your linked GitHub account and repositories connected to your HAKI teams. Private repositories appear only after a team GitHub App installation grants access.</p></div>
+              {!githubError && <span className="rounded-full bg-[#E6EFFD] px-3 py-1 text-xs font-medium text-[#586E94]">{githubRepositories.length} found</span>}
+            </div>
+            {githubError ? <div role="status" className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#FFF8F1] px-4 py-3"><p className="text-sm text-[#827C89]">{githubError}</p><button onClick={loadRepositories} className="rounded-lg bg-[#B9BFDD] px-3 py-2 text-sm font-medium text-[#302D3B]">Retry</button></div> : githubRepositories.length === 0 ? <p className="mt-4 text-sm text-[#827C89]">No GitHub repositories found.</p> : <ul aria-label="GitHub repositories" className="mt-4 max-h-80 divide-y divide-[#F0E8EA] overflow-y-auto overscroll-contain pr-2">{githubRepositories.map((repository) => <li key={repository.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div className="min-w-0"><p className="truncate font-medium text-[#302D3B]">{repository.fullName}</p><p className="mt-1 text-xs text-[#827C89]">{repository.private ? "Private" : "Public"}{repository.teamName ? ` · HAKI team ${repository.teamName}` : ""}{repository.description ? ` · ${repository.description}` : ""}</p></div><a href={repository.htmlUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-[#E8D9DE] px-3 py-2 text-sm font-medium text-[#586E94] hover:bg-[#F8F6FA]">Open on GitHub <ExternalLink size={14} /></a></li>)}</ul>}
+          </div>
 
           <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 

@@ -8,6 +8,7 @@ function hakiApiPlugin() {
     name: "haki-gemini-api",
     configureServer(viteServer) {
       viteServer.middlewares.use((req, res, next) => {
+        if (req.url?.startsWith("/api/v1/")) return next();
         if (!req.url?.startsWith("/api/")) return next();
         handleApi(req, res).catch(next);
       });
@@ -17,4 +18,12 @@ function hakiApiPlugin() {
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), hakiApiPlugin()],
+  server: {
+    proxy: {
+      "/api/v1": {
+        target: process.env.HAKI_API_TARGET || "http://localhost:5000",
+        changeOrigin: true,
+      },
+    },
+  },
 });

@@ -19,6 +19,8 @@ export function getGitHubAuthorizationUrl(state: string): string {
   const url = new URL(GITHUB_AUTHORIZE_URL);
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("redirect_uri", getCallbackUrl());
+  // OAuth establishes identity only. Private/team repository authorization is
+  // handled separately through GitHub App installations.
   url.searchParams.set("scope", "read:user user:email");
   url.searchParams.set("state", state);
 
@@ -26,7 +28,7 @@ export function getGitHubAuthorizationUrl(state: string): string {
 }
 
 function getCallbackUrl(): string {
-  return "http://localhost:5000/api/v1/auth/github/callback";
+  return process.env.GITHUB_OAUTH_CALLBACK_URL ?? "http://localhost:5000/api/v1/auth/github/callback";
 }
 
 export async function exchangeGitHubCode(code: string) {
@@ -54,6 +56,8 @@ export async function exchangeGitHubCode(code: string) {
 
   const data = (await response.json()) as {
     access_token?: string;
+    scope?: string;
+    token_type?: string;
     error?: string;
   };
 
@@ -61,7 +65,24 @@ export async function exchangeGitHubCode(code: string) {
     throw new Error("GitHub token exchange failed.");
   }
 
-  return data.access_token;
+  return { accessToken: data.access_token, scope: data.scope ?? "", tokenType: data.token_type ?? "bearer" };
+}
+
+export async function getPublicGitHubRepositories(username: string) {
+  const repositories: Array<{ id: number; name: string; full_name: string; private: boolean; html_url: string; description: string | null; default_branch: string; updated_at: string; owner: { login: string } }> = [];
+  for (let page = 1; ; page += 1) {
+    const url = new URL(`${GITHUB_API_URL}/users/${encodeURIComponent(username)}/repos`);
+    url.searchParams.set("type", "owner");
+    url.searchParams.set("sort", "updated");
+    url.searchParams.set("per_page", "100");
+    url.searchParams.set("page", String(page));
+    const response = await fetch(url, { headers: { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" } });
+    if (!response.ok) throw new Error(`GitHub repository listing failed (${response.status}).`);
+    const data = await response.json() as typeof repositories;
+    repositories.push(...data);
+    if (data.length < 100) break;
+  }
+  return repositories.filter(({ private: isPrivate }) => !isPrivate).map(({ id, name, full_name, html_url, description, default_branch, updated_at, owner }) => ({ id, name, fullName: full_name, private: false, htmlUrl: html_url, description, defaultBranch: default_branch, updatedAt: updated_at, ownerLogin: owner.login }));
 }
 
 export async function getGitHubUser(accessToken: string) {

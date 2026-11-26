@@ -3,9 +3,14 @@ import { authenticateAccessToken } from "../../middleware/auth.middleware.js";
 import {
   triggerSubmissionValidation,
   getSubmissionValidation,
+  createSubmission,
+  downloadSubmissionPatch,
 } from "./submissions.controller.js";
 
 const router = Router();
+
+router.post("/repositories/:repositoryId", authenticateAccessToken, createSubmission);
+router.get("/:submissionId/patch", authenticateAccessToken, downloadSubmissionPatch);
 
 router.post(
   "/:submissionId/validate",

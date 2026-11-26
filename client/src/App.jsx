@@ -15,6 +15,7 @@ import Dashboard from "./pages/Dashboard";
 import ImportRepository from "./pages/ImportRepository";
 import RepositoryWorkspace from "./pages/RepositoryWorkspace";
 import SettingPage from "./pages/SettingPage";
+import TeamsPage from "./pages/TeamsPage";
 import WorkspaceHeader from "./components/WorkspaceHeader";
 import { refreshBackendSession, logoutAccount } from "./services/api";
 
@@ -106,6 +107,13 @@ function PublicHome({ onAuth }) {
             className="mb-8 w-full rounded-xl p-4 text-left text-slate-500 hover:bg-slate-50"
           >
             About Us
+          </button>
+
+          <button
+            onClick={() => askForLogin("/teams")}
+            className="mb-8 w-full rounded-xl p-4 text-left text-slate-500 hover:bg-slate-50"
+          >
+            Teams
           </button>
 
           <h2 className="mb-5 font-bold">GET STARTED</h2>
@@ -278,6 +286,22 @@ function AppRoutes({ user, onAuth, onUserUpdate, onSignOut }) {
       />
 
       <Route
+        path="/teams"
+        element={
+          <ProtectedPage user={user}>
+            <ExtraPage
+              title="Teams"
+              user={user}
+              onUserUpdate={onUserUpdate}
+              onSignOut={onSignOut}
+            >
+              <TeamsPage user={user} />
+            </ExtraPage>
+          </ProtectedPage>
+        }
+      />
+
+      <Route
         path="/about"
         element={
           <ProtectedPage user={user}>
@@ -331,7 +355,10 @@ function App() {
   useEffect(() => {
     refreshBackendSession()
       .then((result) => setUser(result.user))
-      .catch(() => localStorage.removeItem("haki_token"))
+      .catch(() => {
+        localStorage.removeItem("haki_token");
+        localStorage.removeItem("haki_access_token");
+      })
       .finally(() => setCheckingSession(false));
   }, []);
   async function signOut() {

@@ -122,5 +122,5 @@ export async function rotateRefreshToken(rawToken: string) {
         createdAt: existing.user.createdAt,
       },
     };
-  });
+    }, { maxWait: 10_000 });
 }

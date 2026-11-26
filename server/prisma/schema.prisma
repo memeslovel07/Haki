@@ -19,10 +19,17 @@ enum TeamRole {
 enum MembershipStatus {
   ACTIVE
   SUSPENDED
+  INVITED
+  DECLINED
 }
 
 enum OAuthProvider {
   GITHUB
+}
+
+enum OAuthFlowPurpose {
+  SIGN_IN
+  LINK_ACCOUNT
 }
 
 enum GitHubAccountType {
@@ -87,13 +94,17 @@ model User {
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
   oauthAccounts   OAuthAccount[]
+  githubCredential GitHubOAuthCredential?
   teamMemberships TeamMember[]
   refreshTokens   RefreshToken[]
+  sentTeamInvitations TeamInvitation[]
 
-  submissions    Submission[]    @relation("SubmissionAuthor")
-  reviews        Review[]        @relation("ReviewReviewer")
-  reviewComments ReviewComment[] @relation("ReviewCommentAuthor")
-  auditEvents    AuditEvent[]    @relation("AuditActor")
+  submissions              Submission[]              @relation("SubmissionAuthor")
+  reviews                  Review[]                  @relation("ReviewReviewer")
+  reviewComments           ReviewComment[]           @relation("ReviewCommentAuthor")
+  auditEvents              AuditEvent[]              @relation("AuditActor")
+  githubOAuthFlows         OAuthFlowState[]
+  githubInstallationStates GitHubInstallationState[]
 }
 
 model OAuthAccount {
@@ -113,6 +124,27 @@ model OAuthAccount {
   @@index([userId])
 }
 
+model GitHubOAuthCredential {
+  userId     String   @id @db.Uuid
+  ciphertext String   @db.Text
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model OAuthFlowState {
+  state     String           @id @db.Char(64)
+  purpose   OAuthFlowPurpose
+  userId    String?          @db.Uuid
+  expiresAt DateTime         @db.Timestamptz(6)
+  createdAt DateTime         @default(now()) @db.Timestamptz(6)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@index([userId, purpose])
+}
+
 // ─── Teams ───────────────────────────────────────────
 
 model Team {
@@ -123,11 +155,13 @@ model Team {
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
-  members       TeamMember[]
-  installations GitHubInstallation[]
-  repositories  Repository[]
-  settings      TeamSettings?
-  auditEvents   AuditEvent[]
+  members                  TeamMember[]
+  invitations              TeamInvitation[]
+  installations            GitHubInstallation[]
+  repositories             Repository[]
+  settings                 TeamSettings?
+  auditEvents              AuditEvent[]
+  githubInstallationStates GitHubInstallationState[]
 }
 
 model TeamMember {
@@ -138,6 +172,7 @@ model TeamMember {
   status MembershipStatus @default(ACTIVE)
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
+
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
   team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
@@ -146,6 +181,21 @@ model TeamMember {
   @@unique([teamId, userId])
   @@index([userId, status])
   @@index([teamId, role])
+}
+
+model TeamInvitation {
+  id          String   @id @default(uuid()) @db.Uuid
+  teamId      String   @db.Uuid
+  email       String   @db.VarChar(320)
+  role        TeamRole @default(DEVELOPER)
+  invitedById String   @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  expiresAt   DateTime @db.Timestamptz(6)
+  respondedAt DateTime? @db.Timestamptz(6)
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  invitedBy   User     @relation(fields: [invitedById], references: [id], onDelete: Cascade)
+  @@unique([teamId, email])
+  @@index([email, expiresAt])
 }
 
 model TeamSettings {
@@ -161,13 +211,17 @@ model TeamSettings {
 // ─── GitHub Integration ──────────────────────────────
 
 model GitHubInstallation {
-  id             String            @id @default(uuid()) @db.Uuid
-  installationId BigInt            @unique
-  accountId      BigInt
-  accountLogin   String            @db.VarChar(255)
-  accountType    GitHubAccountType
-  teamId         String            @db.Uuid
-  suspendedAt    DateTime?         @db.Timestamptz(6)
+  id                  String            @id @default(uuid()) @db.Uuid
+  installationId      BigInt            @unique
+  accountId           BigInt
+  accountLogin        String            @db.VarChar(255)
+  accountType         GitHubAccountType
+  teamId              String            @db.Uuid
+  accountUrl          String?           @db.Text
+  permissions         Json?
+  repositorySelection String?           @db.VarChar(32)
+  suspendedAt         DateTime?         @db.Timestamptz(6)
+  removedAt           DateTime?         @db.Timestamptz(6)
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
@@ -176,6 +230,26 @@ model GitHubInstallation {
   repositories Repository[]
 
   @@index([teamId])
+}
+
+model GitHubInstallationState {
+  state     String   @id @db.Char(64)
+  userId    String   @db.Uuid
+  teamId    String   @db.Uuid
+  expiresAt DateTime @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@index([userId, teamId])
+}
+
+model GitHubWebhookDelivery {
+  deliveryId  String   @id @db.VarChar(100)
+  event       String   @db.VarChar(100)
+  processedAt DateTime @default(now()) @db.Timestamptz(6)
 }
 
 model Repository {
@@ -230,8 +304,12 @@ model Submission {
   sourceBranch String @db.Text
   targetBranch String @db.Text
 
-  baseCommitSha String @db.VarChar(64)
-  headCommitSha String @db.VarChar(64)
+  baseCommitSha   String  @db.VarChar(64)
+  headCommitSha   String  @db.VarChar(64)
+  sourceCommitSha String? @db.VarChar(64)
+  patchStorageKey String? @db.Text
+  idempotencyKey  String? @db.VarChar(128)
+  idempotencyHash String? @db.Char(64)
 
   status SubmissionStatus @default(DRAFT)
 
@@ -248,6 +326,7 @@ model Submission {
   pullRequest    PullRequest?
   validationRuns ValidationRun[]
 
+  @@unique([submittedById, idempotencyKey])
   @@index([repositoryId, status, createdAt])
   @@index([submittedById, createdAt])
   @@index([status, createdAt])

@@ -7,6 +7,8 @@ import authRoutes from "./modules/auth/auth.routes.js";
 import usersRoutes from "./modules/users/users.routes.js";
 import submissionsRoutes from "./modules/submissions/submissions.routes.js";
 import reviewsRoutes from "./modules/reviews/reviews.routes.js";
+import githubRoutes from "./modules/github/github.routes.js";
+import teamRoutes from "./modules/teams/teams.routes.js";
 
 const frontendOrigin = process.env.FRONTEND_ORIGIN;
 
@@ -25,10 +27,12 @@ app.use(
   })
 );
 
-app.use(express.json());
+app.use(express.json({ limit: "3mb", verify: (req, _res, buffer) => { (req as typeof req & { rawBody?: Buffer }).rawBody = Buffer.from(buffer); } }));
 app.use(cookieParser());
 
 app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/github", githubRoutes);
+app.use("/api/v1/teams", teamRoutes);
 app.use("/api/v1/users", usersRoutes);
 app.use("/api/v1/submissions", submissionsRoutes);
 app.use("/api/v1/submissions", reviewsRoutes);
