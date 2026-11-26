@@ -13,7 +13,6 @@ import AboutPage from "./pages/AboutPage";
 import AuthPage from "./pages/AuthPage";
 import Dashboard from "./pages/Dashboard";
 import ImportRepository from "./pages/ImportRepository";
-import RepositoryWorkspace from "./pages/RepositoryWorkspace";
 import SettingPage from "./pages/SettingPage";
 import WorkspaceHeader from "./components/WorkspaceHeader";
 import { refreshBackendSession, logoutAccount } from "./services/api";
@@ -248,18 +247,7 @@ function AppRoutes({ user, onAuth, onUserUpdate, onSignOut }) {
         }
       />
 
-      <Route
-        path="/repositories/:id"
-        element={
-          <ProtectedPage user={user}>
-            <RepositoryWorkspace
-              user={user}
-              onUserUpdate={onUserUpdate}
-              onSignOut={onSignOut}
-            />
-          </ProtectedPage>
-        }
-      />
+      <Route path="/repositories/:id" element={<Navigate to="/" replace />} />
 
       <Route
         path="/setting"

@@ -1,4 +1,4 @@
-function RepositoryCard({ repository, onOpen, onEdit, onDelete, canManage = true }) {
+function RepositoryCard({ repository, onEdit, onDelete, canManage = true }) {
   const updatedDate = repository.updatedAt
     ? new Date(repository.updatedAt).toLocaleDateString(undefined, {
         day: "2-digit",
@@ -44,12 +44,6 @@ function RepositoryCard({ repository, onOpen, onEdit, onDelete, canManage = true
           >
             Delete
           </button>}
-          <button
-            onClick={() => onOpen(repository)}
-            className="rounded-lg bg-[#B9BFDD] px-3.5 py-2 text-xs font-semibold text-[#302D3B] transition hover:bg-[#AEB6D8]"
-          >
-            Open Repository →
-          </button>
         </div>
       </div>
     </article>

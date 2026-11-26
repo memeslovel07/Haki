@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { FolderGit2, Globe2, LockKeyhole, Search } from "lucide-react";
 
 import {
@@ -14,8 +14,6 @@ import RepositoryModal from "../components/RepositoryModal";
 import UserAvatar from "../components/UserAvatar";
 
 function Dashboard({ user, onUserUpdate, onSignOut }) {
-  const navigate = useNavigate();
-
   const [repositories, setRepositories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -121,10 +119,6 @@ function Dashboard({ user, onUserUpdate, onSignOut }) {
     } catch (error) {
       setError(error.message || "Failed to delete repository.");
     }
-  }
-
-  function handleOpen(repository) {
-    navigate(`/repositories/${repository.id}`);
   }
 
   return (
@@ -347,7 +341,6 @@ function Dashboard({ user, onUserUpdate, onSignOut }) {
                 <RepositoryCard
                   key={repository.id}
                   repository={repository}
-                  onOpen={handleOpen}
                   onEdit={openEditModal}
                   onDelete={handleDelete}
                   canManage={user?.role === "admin" || repository.ownerId === user?.id}
