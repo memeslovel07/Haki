@@ -68,7 +68,7 @@ function PublicHome({ onAuth }) {
         </span>
 
         <div className="flex w-full gap-2 sm:w-auto sm:gap-3">
-          <button
+                    <button
             onClick={() => askForLogin("/create")}
             className="flex-1 rounded-xl border border-slate-400 px-3 py-3 text-sm font-semibold sm:flex-none sm:px-5"
           >

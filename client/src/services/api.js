@@ -1,6 +1,7 @@
 // Local-only demo store. Use a secure backend for real accounts and shared data.
 const DB_KEY = "haki_frontend_demo_v1";
 const TOKEN_KEY = "haki_token";
+let backendAccessToken = "";
 const avatars = ["member-1", "member-2", "member-3", "member-4", "member-5", "member-6"];
 
 function dbRead() {
@@ -81,7 +82,8 @@ async function authRequest(endpoint, options = {}) {
   return body?.data ?? body;
 }
 
-function establishLocalSession(backendUser) {
+function establishLocalSession(backendUser, accessToken) {
+  backendAccessToken = typeof accessToken === "string" ? accessToken : backendAccessToken;
   const db = dbRead();
   const user = localUserFromBackend(backendUser);
   return startSession(dbRead(), user);
@@ -105,7 +107,7 @@ export async function loginAccount({ email, password }) {
     body: JSON.stringify({ email: address, password }),
   });
 
-  return establishLocalSession(result.user);
+  return establishLocalSession(result.user, result.accessToken);
 }
 
 let refreshPromise = null;
@@ -113,7 +115,7 @@ let refreshPromise = null;
 export function refreshBackendSession() {
   if (!refreshPromise) {
     refreshPromise = authRequest("/refresh", { method: "POST" })
-      .then((result) => establishLocalSession(result.user))
+      .then((result) => establishLocalSession(result.user, result.accessToken))
       .finally(() => {
         refreshPromise = null;
       });
@@ -140,6 +142,7 @@ export async function logoutAccount() {
     if (token) delete db.sessions[token];
     dbWrite(db);
     localStorage.removeItem(TOKEN_KEY);
+    backendAccessToken = "";
   }
 }
 
@@ -181,8 +184,26 @@ export async function updateAccountProfile(profile) {
   return { user: safeUser(user) };
 }
 
+const DEMO_REPOSITORY_NAME = "haki-demo-project";
+const DEMO_REPOSITORY_DESCRIPTION = "Sample app for exploring HAKI's repository tree, code viewer, commit history, and security report.";
+
+function removeDemoRepositoryData(db) {
+  const demoIds = new Set(db.repositories.filter((repo) => repo.name.toLowerCase() === DEMO_REPOSITORY_NAME && repo.description === DEMO_REPOSITORY_DESCRIPTION).map((repo) => repo.id));
+  if (!demoIds.size) return;
+  db.repositories = db.repositories.filter((repo) => !demoIds.has(repo.id));
+  db.files = db.files.filter((file) => !demoIds.has(file.repositoryId));
+  db.commits = db.commits.filter((commit) => !demoIds.has(commit.repositoryId));
+  dbWrite(db);
+}
+
+if (typeof window !== "undefined") {
+  try { removeDemoRepositoryData(dbRead()); } catch { /* Ignore unavailable browser storage. */ }
+}
+
 export async function getRepositories() {
-  const db = dbRead(); const user = requireUser(db);
+  const db = dbRead();
+  const user = requireUser(db);
+  removeDemoRepositoryData(db);
   return { data: db.repositories.filter((repo) => repo.ownerId === user.id || repo.visibility === "public") };
 }
 export async function getRepository(repoId) {
@@ -238,4 +259,63 @@ export async function createCommit(repoId, message) {
   const previous = db.commits.find((entry) => entry.repositoryId === repoId);
   const commit = { id: id("commit"), repositoryId: repoId, message: String(message).trim(), authorId: user.id, authorName: user.fullName, parentId: previous?.id || null, createdAt: new Date().toISOString(), files: db.files.filter((entry) => entry.repositoryId === repoId).length };
   db.commits.unshift(commit); repo.updatedAt = commit.createdAt; dbWrite(db); return { data: commit };
+}
+
+export async function requestHakiBackend(endpoint, options = {}) {
+  if (!backendAccessToken) await refreshBackendSession();
+  const send = () => fetch("/api/v1/security/" + endpoint, {
+    credentials: "include",
+    ...options,
+    headers: { ...(options.headers || {}), Authorization: "Bearer " + backendAccessToken },
+  });
+  let response = await send();
+  if (response.status === 401) {
+    await refreshBackendSession();
+    response = await send();
+  }
+  const body = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(body?.error?.message || body?.error || body?.message || "HAKI backend request failed.");
+  return body;
+}
+const SECURITY_REPORT_PATH = "HAKI_SECURITY_REPORT.md";
+
+function buildSecurityReportMarkdown(repositoryName, report, { commitMessage = "", summary = "" } = {}) {
+  const counts = report.counts || {};
+  const findings = report.findings || [];
+  const needsReview = (counts.critical || 0) > 0 || (counts.high || 0) > 0;
+  const rows = findings.length
+    ? findings.map((item) => "| " + String(item.severity || "info").toUpperCase() + " | " + String(item.title || "Finding").replaceAll("|", "\\|") + " | " + String(item.path || "-").replaceAll("|", "\\|") + (item.line ? ":" + item.line : "") + " | " + String(item.recommendation || "Review manually.").replaceAll("|", "\\|") + " |").join("\n")
+    : "| — | No matched patterns | — | No issues matched the configured checks. |";
+  return "# HAKI Security and Governance Report\n\nRepository: **" + repositoryName + "**\n\nGenerated: " + new Date(report.scannedAt || Date.now()).toLocaleString() + "\n\n" + (commitMessage ? "Commit: **" + commitMessage + "**\n\n" : "") + "Review status: **" + (needsReview ? "Senior developer review recommended" : "No high or critical patterns detected") + "**\n\nFiles scanned: " + (report.scannedFiles || 0) + "\n\nCritical: " + (counts.critical || 0) + " · High: " + (counts.high || 0) + " · Medium: " + (counts.medium || 0) + " · Low: " + (counts.low || 0) + "\n\n" + (summary ? "## HAKI AI review\n\n" + summary + "\n\n" : "") + "## Findings\n\n| Severity | Finding | Location | Recommendation |\n|---|---|---|---|\n" + rows + "\n\nThis automated report checks configured patterns and is not proof that the code is correct or safe. A senior developer should review the findings and code. Secret values are hidden.\n";
+}
+
+export async function saveSecurityReportFile(repoId, repositoryName, report, options = {}) {
+  const markdown = buildSecurityReportMarkdown(repositoryName, report, options);
+  const current = (await getFiles(repoId)).data.find((file) => file.path === SECURITY_REPORT_PATH);
+  const saved = current
+    ? await updateFile(repoId, current.id, { content: markdown })
+    : await createFile(repoId, { name: SECURITY_REPORT_PATH, path: SECURITY_REPORT_PATH, content: markdown, mimeType: "text/markdown" });
+  return { file: saved.data, markdown };
+}
+
+export async function generateAndSaveSecurityReport(repoId, repositoryName, commitMessage = "") {
+  const files = (await getFiles(repoId)).data.filter((file) => file.path !== SECURITY_REPORT_PATH);
+  const result = await requestHakiBackend("scan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ files: files.map(({ path, content, encoding }) => ({ path, content, encoding })) }),
+  });
+  let summary = "";
+  try {
+    const review = await requestHakiBackend("review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repository: repositoryName, findings: result.report.findings.slice(0, 80) }),
+    });
+    summary = review.summary || "";
+  } catch {
+    // Keep the scanner report even when the optional AI summary is unavailable.
+  }
+  const saved = await saveSecurityReportFile(repoId, repositoryName, result.report, { commitMessage, summary });
+  return { ...saved, report: result.report, aiReviewed: Boolean(summary) };
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 
 import {
@@ -9,10 +9,13 @@ import {
   deleteFile,
   getCommits,
   createCommit,
+  generateAndSaveSecurityReport,
 } from "../services/api";
 
 import DirectoryTree from "../components/DirectoryTree";
 import UserAvatar from "../components/UserAvatar";
+import RepositorySecurityReport from "../components/RepositorySecurityReport";
+import ReadmePreview from "../components/ReadmePreview";
 
 function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
   const { id } = useParams();
@@ -26,6 +29,7 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
 
@@ -41,6 +45,15 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
   const [commitModalOpen, setCommitModalOpen] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
   const [committing, setCommitting] = useState(false);
+  const lineGutterRef = useRef(null);
+  const folderPaths = files.flatMap((file) => {
+    const parts = (file.path || "").split("/").filter(Boolean).slice(0, -1);
+    return parts.map((_, index) => parts.slice(0, index + 1).join("/"));
+  });
+  const folderCount = new Set(folderPaths).size;
+  const totalBytes = files.reduce((total, file) => total + Number(file.size || (file.content || "").length), 0);
+  const sizeLabel = totalBytes >= 1024 * 1024 ? (totalBytes / (1024 * 1024)).toFixed(1) + " MB" : Math.max(1, Math.round(totalBytes / 1024)) + " KB";
+  const readmeFile = files.find((file) => file.path?.toLowerCase() === "readme.md");
 
   function openCreateFileModal() {
     setError("");
@@ -236,41 +249,36 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
 
   async function handleCreateCommit(event) {
     event.preventDefault();
+    if (!commitMessage.trim()) { setError("Commit message is required."); return; }
 
-    if (!commitMessage.trim()) {
-      setError("Commit message is required.");
-      return;
-    }
-
+    setCommitting(true);
+    setError("");
+    setNotice("");
+    let reportWarning = "";
     try {
-      setCommitting(true);
-      setError("");
+      try {
+        const generated = await generateAndSaveSecurityReport(id, repository?.name || "Repository", commitMessage.trim());
+        setFiles((current) => {
+          const withoutOldReport = current.filter((file) => file.path !== generated.file.path);
+          return [...withoutOldReport, generated.file].sort((a, b) => a.path.localeCompare(b.path));
+        });
+      } catch (reportError) {
+        reportWarning = reportError.message || "The automatic report could not be generated.";
+      }
 
-      const response = await createCommit(
-        id,
-        commitMessage.trim()
-      );
-
-      const newCommit = response.data;
-
-      setCommits((currentCommits) => [
-        newCommit,
-        ...currentCommits,
-      ]);
-
+      const response = await createCommit(id, commitMessage.trim());
+      setCommits((current) => [response.data, ...current]);
       setCommitMessage("");
       setCommitModalOpen(false);
-    } catch (error) {
-      console.error("Failed to create commit:", error);
-
-      setError(
-        error.message || "Failed to create commit."
-      );
+      if (reportWarning) setError("Commit created, but the automatic report could not be updated: " + reportWarning);
+      else setNotice("Commit created. HAKI_SECURITY_REPORT.md was updated in this repository.");
+    } catch (commitError) {
+      console.error("Failed to create commit:", commitError);
+      setError(commitError.message || "Failed to create commit.");
     } finally {
       setCommitting(false);
     }
   }
-
   async function loadWorkspace() {
     try {
       setLoading(true);
@@ -439,6 +447,21 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
           </div>
         )}
 
+        {notice && <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</div>}
+        <section className="mb-5 overflow-hidden rounded-xl border border-[#E8D9DE] bg-white">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E8D9DE] px-5 py-4">
+            <div><h2 className="font-semibold">Repository overview</h2><p className="mt-1 text-sm text-[#827C89]">{repository?.description || "Browse the complete file tree and inspect code."}</p></div>
+            <span className="rounded-full bg-[#F0E8EC] px-3 py-1.5 text-xs font-semibold text-[#514D5A]">{repository?.defaultBranch || "main"} branch</span>
+          </div>
+          <div className="grid grid-cols-2 divide-x divide-y divide-[#E8D9DE] sm:grid-cols-4 sm:divide-y-0">
+            <div className="px-5 py-4"><p className="text-xs uppercase tracking-wide text-[#958F9B]">Files</p><p className="mt-1 text-2xl font-bold">{files.length}</p></div>
+            <div className="px-5 py-4"><p className="text-xs uppercase tracking-wide text-[#958F9B]">Folders</p><p className="mt-1 text-2xl font-bold">{folderCount}</p></div>
+            <div className="px-5 py-4"><p className="text-xs uppercase tracking-wide text-[#958F9B]">Commits</p><p className="mt-1 text-2xl font-bold">{commits.length}</p></div>
+            <div className="px-5 py-4"><p className="text-xs uppercase tracking-wide text-[#958F9B]">Workspace size</p><p className="mt-1 text-2xl font-bold">{files.length ? sizeLabel : "0 KB"}</p></div>
+          </div>
+          {commits[0] && <div className="border-t border-[#E8D9DE] px-5 py-3 text-sm"><span className="font-medium">Latest commit:</span> <span className="text-[#706B79]">{commits[0].message}</span> <span className="ml-2 text-xs text-[#958F9B]">{new Date(commits[0].createdAt).toLocaleString()}</span></div>}
+        </section>
+        <RepositorySecurityReport repositoryId={id} repositoryName={repository?.name || "Repository"} files={files} onReportSaved={(savedFile) => setFiles((current) => [...current.filter((file) => file.path !== savedFile.path), savedFile].sort((a, b) => a.path.localeCompare(b.path)))} />
         <div className="grid min-h-[600px] overflow-hidden rounded-xl border border-[#E8D9DE] bg-white md:grid-cols-[280px_1fr]">
 
           <aside className="border-b border-[#E8D9DE] bg-[#FFF8F1] md:border-b-0 md:border-r">
@@ -549,16 +572,21 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
 
                 <div className="flex-1 bg-[#FFF8F1] p-6">
 
-                  <textarea
-                    value={editedContent}
-                    onChange={(event) =>
-                      setEditedContent(event.target.value)
-                    }
-                    readOnly={!canManageRepository}
-                    spellCheck="false"
-                    className="h-full min-h-[500px] w-full resize-none rounded-lg border border-[#E8D9DE] bg-[#FFF8F1] p-4 font-mono text-sm leading-7 text-[#514D5A] outline-none focus:border-[#AEB6D8] read-only:cursor-default"
-                    placeholder="File content..."
-                  />
+                  <div className="flex min-h-[560px] overflow-hidden rounded-lg border border-[#E8D9DE] bg-[#FFF8F1]">
+                    <div ref={lineGutterRef} aria-hidden="true" className="max-h-[72vh] min-h-[560px] w-12 shrink-0 overflow-hidden border-r border-[#E8D9DE] bg-white py-4 text-right font-mono text-sm leading-7 text-[#A49DA8]">
+                      {(editedContent || "").split("\n").map((_, index) => <div key={index} className="px-3">{index + 1}</div>)}
+                    </div>
+                    <textarea
+                      value={editedContent}
+                      onChange={(event) => setEditedContent(event.target.value)}
+                      onScroll={(event) => { if (lineGutterRef.current) lineGutterRef.current.scrollTop = event.currentTarget.scrollTop; }}
+                      readOnly={!canManageRepository}
+                      spellCheck="false"
+                      wrap="off"
+                      className="max-h-[72vh] min-h-[560px] min-w-0 flex-1 resize-none overflow-auto bg-transparent p-4 font-mono text-sm leading-7 text-[#514D5A] outline-none focus:bg-white read-only:cursor-default"
+                      placeholder="File content..."
+                    />
+                  </div>
 
                 </div>
 
@@ -604,6 +632,7 @@ function RepositoryWorkspace({ user, onUserUpdate, onSignOut }) {
           </main>
         </div>
 
+        {readmeFile && <ReadmePreview content={readmeFile.content} repositoryName={repository?.name || "Repository"} />}
         <div className="mt-5 rounded-xl border border-[#E8D9DE] bg-white px-5 py-4">
 
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">

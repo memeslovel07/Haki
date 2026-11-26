@@ -42,7 +42,14 @@ test-results/
 docker-data/
 
 # Local AI agent configuration
-.agents/
+.agents
+!.agents/
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/karpathy-methodology/
+.agents/skills/karpathy-methodology/*
+!.agents/skills/karpathy-methodology/SKILL.md
 .claude/
 .windsurf/
 skills-lock.json

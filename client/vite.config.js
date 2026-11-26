@@ -5,10 +5,10 @@ import { handleApi } from "./server/index.js";
 
 function hakiApiPlugin() {
   return {
-    name: "haki-gemini-api",
+    name: "haki-local-api",
     configureServer(viteServer) {
       viteServer.middlewares.use((req, res, next) => {
-        if (!req.url?.startsWith("/api/")) return next();
+        if (!req.url?.startsWith("/api/") || req.url.startsWith("/api/v1/")) return next();
         handleApi(req, res).catch(next);
       });
     },
@@ -17,4 +17,12 @@ function hakiApiPlugin() {
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), hakiApiPlugin()],
+  server: {
+    proxy: {
+      "/api/v1": {
+        target: process.env.HAKI_API_TARGET || "http://localhost:5000",
+        changeOrigin: true,
+      },
+    },
+  },
 });

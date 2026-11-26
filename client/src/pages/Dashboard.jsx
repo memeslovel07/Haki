@@ -174,7 +174,7 @@ function Dashboard({ user, onUserUpdate, onSignOut }) {
           </div>
 
           <nav aria-label="Workspace" className="hidden items-center gap-1 lg:flex">
-            <Link to="/setting" className="rounded-lg px-3 py-2 text-sm font-medium text-[#706B79] hover:bg-white">Settings</Link>
+                        <Link to="/setting" className="rounded-lg px-3 py-2 text-sm font-medium text-[#706B79] hover:bg-white">Settings</Link>
             <Link to="/import" className="rounded-lg px-3 py-2 text-sm font-medium text-[#706B79] hover:bg-white">Import</Link>
             <Link to="/about" className="rounded-lg px-3 py-2 text-sm font-medium text-[#706B79] hover:bg-white">About</Link>
           </nav>
@@ -257,7 +257,7 @@ function Dashboard({ user, onUserUpdate, onSignOut }) {
 
           <div className="mb-7 flex items-center justify-between gap-4 rounded-xl border border-[#E5BEBB] bg-[#FBE3DF]/70 px-5 py-4 text-sm text-[#A96060] shadow-[0_0_25px_rgba(239,68,68,0.05)]">
 
-            <span>{error}</span>
+            <span className="flex-1">{error}</span>
 
             <button
               onClick={() => setError("")}

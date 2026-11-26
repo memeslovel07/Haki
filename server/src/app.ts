@@ -7,6 +7,7 @@ import authRoutes from "./modules/auth/auth.routes.js";
 import usersRoutes from "./modules/users/users.routes.js";
 import submissionsRoutes from "./modules/submissions/submissions.routes.js";
 import reviewsRoutes from "./modules/reviews/reviews.routes.js";
+import securityRoutes from "./modules/security/security.routes.js";
 
 const frontendOrigin = process.env.FRONTEND_ORIGIN;
 
@@ -25,6 +26,7 @@ app.use(
   })
 );
 
+app.use("/api/v1/security", securityRoutes);
 app.use(express.json());
 app.use(cookieParser());
 

@@ -1,29 +1,28 @@
 import { useEffect, useRef, useState } from "react";
+import { requestHakiBackend } from "../services/api";
 
 const ui = {
-  greeting: "Hi! I’m Haki Assistant. Ask me anything about using HAKI.",
+  greeting: "Welcome! HAKI Assistant can help with repositories, files, commits, security scans, and reports. What are you working on?",
   title: "Haki Assistant",
-  subtitle: "Gemini AI · workspace help",
+  subtitle: "HAKI project assistant",
   close: "Close chat",
   thinking: "Thinking…",
   placeholder: "Ask about HAKI…",
   label: "Message Haki Assistant",
-  footer: "Powered by Gemini. Don’t share passwords or API keys.",
-  open: "AI Chatbot",
+  footer: "AI answers can be imperfect. Please do not share passwords or API keys.",
+  open: "HAKI Assistant",
   closeAssistant: "Close assistant",
   error: "Could not get a reply. Please try again.",
   suggestionsTitle: "Try asking",
   suggestions: [
     "How do I create a repository?",
-    "What is the difference between public and private?",
-    "How do I upload a file or folder?",
-    "How do I commit my changes?",
+    "How do I browse folders and files?",
+    "How do I scan a repository for leaked API keys?",
+    "What happens to the report after I commit?",
     "How do I import a ZIP file?",
-    "How do I change my profile or theme?",
-    "Where is my project data stored?",
-    "How do I sign in or reset my password?",
-    "How can I publish this project on GitHub?",
-    "How do I connect the Gemini API?",
+    "Where is my HAKI repository data stored?",
+    "Does HAKI push my repository to GitHub?",
+    "What repository details are sent for AI review?",
   ],
 };
 
@@ -52,13 +51,11 @@ function Chatbot() {
     setIsSending(true);
 
     try {
-      const response = await fetch("/api/chat", {
+      const result = await requestHakiBackend("chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: content, history: history.slice(-12) }),
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || ui.error);
       setMessages((current) => [...current, { role: "assistant", content: result.reply }]);
     } catch (requestError) {
       setError(requestError.message || ui.error);
