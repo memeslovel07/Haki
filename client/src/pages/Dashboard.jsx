@@ -1,27 +1,37 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { FolderGit2, Globe2, LockKeyhole, Search } from "lucide-react";
+import { FolderGit2, Globe2, LockKeyhole, Search, GitCommitHorizontal, Activity, ArrowUpRight, Moon, Sun, UsersRound } from "lucide-react";
 
 import {
   getRepositories,
+  getCommits,
+  refreshBackendSession,
   createRepository,
   updateRepository,
   deleteRepository,
+  getGitHubRepositories,
 } from "../services/api";
 
 import RepositoryCard from "../components/RepositoryCard";
+import HakiLogo from "../components/HakiLogo";
 import RepositoryModal from "../components/RepositoryModal";
 import UserAvatar from "../components/UserAvatar";
 
-function Dashboard({ user, onUserUpdate, onSignOut }) {
+function Dashboard({ user, onUserUpdate, onSignOut, theme, onThemeToggle }) {
   const navigate = useNavigate();
 
   const [repositories, setRepositories] = useState([]);
+  const [githubRepositories, setGithubRepositories] = useState([]);
+  const [githubError, setGithubError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingRepository, setEditingRepository] = useState(null);
   const [search, setSearch] = useState("");
+  const [activity, setActivity] = useState([]);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
+  const profileMenuRef = useRef(null);
 
   const [form, setForm] = useState({
     name: "",
@@ -32,24 +42,97 @@ function Dashboard({ user, onUserUpdate, onSignOut }) {
   const visibleRepositories = repositories.filter((repository) => `${repository.name} ${repository.description || ""}`.toLowerCase().includes(search.toLowerCase()));
   const publicCount = repositories.filter((repository) => repository.visibility === "public").length;
   const privateCount = repositories.length - publicCount;
+  const activityEnd = new Date();
+  activityEnd.setHours(0, 0, 0, 0);
+  const activityStart = new Date(activityEnd);
+  activityStart.setDate(activityStart.getDate() - 364);
+  activityStart.setDate(activityStart.getDate() - activityStart.getDay());
+  const activityByDay = new Map();
+  activity.forEach((item) => {
+    const day = new Date(item.createdAt);
+    const key = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
+    activityByDay.set(key, (activityByDay.get(key) || 0) + 1);
+  });
+  const yearlyDays = Array.from({ length: Math.floor((activityEnd - activityStart) / 86400000) + 1 }, (_, index) => {
+    const day = new Date(activityStart);
+    day.setDate(activityStart.getDate() + index);
+    const count = activityByDay.get(new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime()) || 0;
+    return { day, count };
+  });
+  const monthLabels = yearlyDays.map(({ day }, index) => day.getDate() === 1 ? { label: day.toLocaleDateString(undefined, { month: "short" }), week: Math.floor(index / 7) } : null).filter(Boolean);
+  const contributionTotal = yearlyDays.reduce((sum, day) => sum + day.count, 0);
 
-  async function loadRepositories() {
+  const loadRepositories = useCallback(async () => {
     try {
-      setLoading(true);
+      let response;
+      try {
+        response = await getRepositories();
+      } catch (loadError) {
+        if (loadError.message !== "Please sign in to continue.") throw loadError;
+        await refreshBackendSession();
+        response = await getRepositories();
+      }
       setError("");
-
-      const response = await getRepositories();
       setRepositories(response.data);
+      try {
+        const githubResponse = await getGitHubRepositories();
+        setGithubRepositories(githubResponse.data);
+        setGithubError("");
+      } catch (githubLoadError) {
+        setGithubRepositories([]);
+        setGithubError(githubLoadError.message || "GitHub repositories could not be loaded.");
+      }
+      const histories = await Promise.all(response.data.map(async (repository) => {
+        try {
+          const result = await getCommits(repository.id);
+          return result.data.map((commit) => ({ ...commit, repositoryName: repository.name, repositoryId: repository.id, kind: "commit" }));
+        } catch {
+          return [];
+        }
+      }));
+      const commits = histories.flat();
+      const latestRepoUpdates = response.data.map((repository) => ({
+        id: `repo-${repository.id}`,
+        repositoryName: repository.name,
+        repositoryId: repository.id,
+        message: `Repository ${repository.createdAt === repository.updatedAt ? "created" : "updated"}`,
+        createdAt: repository.updatedAt || repository.createdAt,
+        kind: "repository",
+      }));
+      setActivity([...commits, ...latestRepoUpdates].filter((item) => item.createdAt).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
     } catch (error) {
       setError(error.message || "Failed to load repositories.");
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
-    loadRepositories();
-  }, []);
+    const timer = window.setTimeout(() => { void loadRepositories(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadRepositories]);
+
+  useEffect(() => {
+    if (!profileMenuOpen) return undefined;
+    function handleOutsideClick(event) {
+      if (!profileMenuRef.current?.contains(event.target)) {
+        setProfileMenuOpen(false);
+        setMoreOptionsOpen(false);
+      }
+    }
+    function handleEscape(event) {
+      if (event.key === "Escape") {
+        setProfileMenuOpen(false);
+        setMoreOptionsOpen(false);
+      }
+    }
+    document.addEventListener("pointerdown", handleOutsideClick);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("pointerdown", handleOutsideClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [profileMenuOpen]);
 
   function openCreateModal() {
     setEditingRepository(null);
@@ -128,256 +211,115 @@ function Dashboard({ user, onUserUpdate, onSignOut }) {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#FFF8F1] text-[#302D3B]">
+    <div className="dashboard-shell min-h-screen bg-[#0B1020] text-[#E9ECF5]" data-theme={theme}>
+      <div className="flex min-h-screen">
+        <aside className="sticky top-0 hidden h-screen w-60 shrink-0 self-start flex-col overflow-y-auto border-r border-white/[0.07] bg-[#0D1324] px-4 py-5 lg:flex">
+          <Link to="/" className="mb-9 flex items-center gap-3 px-2">
+            <HakiLogo className="h-10 w-10" />
+            <span><strong className="block text-sm tracking-wide">HAKI</strong><small className="text-[10px] text-[#8994AA]">Developer workspace</small></span>
+          </Link>
+          <div className="mb-8 rounded-xl border border-white/[0.08] bg-white/[0.035] p-3">
+            <p className="text-xs font-semibold">{user?.fullName || user?.email}</p>
+            <p className="mt-1 text-[10px] text-[#8994AA]">Personal workspace</p>
+          </div>
+          <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#66728A]">Workspace</p>
+          <nav className="space-y-1" aria-label="Workspace">
+            <Link to="/" className="flex items-center gap-3 rounded-lg bg-[#687386]/15 px-3 py-2.5 text-sm font-medium text-[#D0D5DE]"><FolderGit2 size={16} />Overview</Link>
+            <button onClick={() => document.getElementById("repositories")?.scrollIntoView({ behavior: "smooth" })} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-[#9AA5B8] transition hover:bg-white/[0.05] hover:text-white"><GitCommitHorizontal size={16} />Repositories<span className="ml-auto text-xs text-[#758199]">{repositories.length}</span></button>
+            <button onClick={() => document.getElementById("activity-heading")?.scrollIntoView({ behavior: "smooth" })} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-[#9AA5B8] transition hover:bg-white/[0.05] hover:text-white"><Activity size={16} />Activity</button>
+          </nav>
+          <p className="mb-2 mt-8 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#66728A]">Manage</p>
+          <nav className="space-y-1" aria-label="Manage workspace">
+            <Link to="/import" className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-[#9AA5B8] transition hover:bg-white/[0.05] hover:text-white">Import repository</Link>
+            <Link to="/teams" className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-[#9AA5B8] transition hover:bg-white/[0.05] hover:text-white"><UsersRound size={16} />Teams</Link>
+            <Link to="/setting" className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-[#9AA5B8] transition hover:bg-white/[0.05] hover:text-white">Settings</Link>
+            <Link to="/about" className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-[#9AA5B8] transition hover:bg-white/[0.05] hover:text-white">About HAKI</Link>
+          </nav>
+          <div className="mt-auto rounded-xl border border-[#687386]/20 bg-[#687386]/[0.08] p-4">
+            <p className="text-xs font-semibold text-[#D4D9E0]">Your workspace</p>
+            <p className="mt-1 text-[11px] leading-5 text-[#8994AA]">{repositories.length} repositories ready to build.</p>
+            <button onClick={openCreateModal} className="mt-3 w-full rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-[#E9ECF5] hover:bg-white/10">New repository</button>
+          </div>
+          <div className="relative mt-4 border-t border-white/[0.08] pt-4" ref={profileMenuRef}>
+            <div className="flex items-center gap-3 rounded-xl px-2 py-2">
+              <UserAvatar user={user} onUserUpdate={onUserUpdate} onClick={() => { setProfileMenuOpen((open) => !open); setMoreOptionsOpen(false); }} size="h-10 w-10" />
+              <span className="min-w-0 flex-1 truncate text-sm font-medium">{user?.fullName || user?.email}</span>
+              <button onClick={() => { setProfileMenuOpen((open) => !open); setMoreOptionsOpen(false); }} aria-label="Open account options" aria-expanded={profileMenuOpen} className="rounded-lg px-2 py-2 text-lg leading-none text-[#AAB4C5] hover:bg-white/[0.07]">⋯</button>
+            </div>
+            {profileMenuOpen && <div className="absolute bottom-full left-0 z-50 mb-2 w-full rounded-xl border border-white/10 bg-[#111827] p-2 shadow-2xl">
+              <p className="truncate px-3 py-2 text-xs text-[#AAB4C5]">{user?.email}</p>
+              <button onClick={onSignOut} className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-[#E9ECF5] hover:bg-white/[0.08]">Sign out</button>
+              <button onClick={() => setMoreOptionsOpen((open) => !open)} aria-expanded={moreOptionsOpen} className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm text-[#E9ECF5] hover:bg-white/[0.08]">More options <span aria-hidden="true">{moreOptionsOpen ? "−" : "+"}</span></button>
+              {moreOptionsOpen && <div className="mt-1 border-t border-white/[0.08] pt-1"><Link to="/setting" onClick={() => setProfileMenuOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-[#AAB4C5] hover:bg-white/[0.08]">Settings</Link><Link to="/about" onClick={() => setProfileMenuOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-[#AAB4C5] hover:bg-white/[0.08]">About HAKI</Link></div>}
+            </div>}
+          </div>
+        </aside>
 
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="min-w-0 flex-1">
+          <header className="sticky top-0 z-20 border-b border-white/[0.07] bg-[#0B1020]/90 backdrop-blur-xl">
+            <div className="flex min-h-[68px] flex-wrap items-center justify-between gap-3 px-4 sm:px-7">
+              <div className="flex items-center gap-3 lg:hidden"><HakiLogo className="h-10 w-10"/><strong>HAKI</strong></div>
+              <div className="hidden text-xs text-[#8994AA] lg:block">Workspace <span className="mx-2 text-[#4D5870]">/</span><span className="text-[#E9ECF5]">Overview</span></div>
+              <label className="relative order-3 w-full sm:order-none sm:ml-auto sm:w-72"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#748098]"/><span className="sr-only">Search repositories</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search repositories…" className="w-full rounded-lg border border-white/[0.09] bg-white/[0.035] py-2 pl-9 pr-3 text-xs text-[#E9ECF5] outline-none placeholder:text-[#748098] focus:border-[#8A95A3]" /></label>
+              <div className="flex items-center gap-2 sm:gap-3"><span className="hidden text-xs text-[#8994AA] sm:block">Workspace active</span><span className="h-2 w-2 rounded-full bg-[#8294A5] shadow-[0_0_12px_#8294A5]"/><span className="lg:hidden"><UserAvatar user={user} onUserUpdate={onUserUpdate} size="h-8 w-8"/></span><button onClick={onThemeToggle} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`} title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`} className="theme-toggle rounded-lg border border-white/[0.09] p-2 text-[#B8C1D1] hover:bg-white/[0.06]">{theme === "dark" ? <Sun size={15}/> : <Moon size={15}/>}</button><button onClick={onSignOut} className="rounded-lg border border-white/[0.09] px-3 py-2 text-xs font-medium text-[#B8C1D1] hover:bg-white/[0.05] lg:hidden">Sign out</button></div>
+            </div>
+          </header>
 
-        <div className="absolute -left-40 top-40 h-[520px] w-[520px] rounded-full border-[70px] border-[#C3C6DF]/50 blur-sm" />
+          <main className="page-enter mx-auto max-w-[1500px] px-4 py-7 sm:px-7 sm:py-9">
+            <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
+              <div><p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#B7C0CC]">Workspace overview</p><h1 className="dashboard-welcome-title text-3xl font-extrabold tracking-tight sm:text-4xl">Good to see you, <span className="dashboard-welcome-name">{user?.fullName?.split(" ")[0] || "developer"}</span></h1><p className="mt-2 text-base text-[#8994AA]">Everything you’re building, moving forward.</p></div>
+              <div className="flex flex-wrap gap-2"><Link to="/teams" className="inline-flex items-center gap-2 rounded-lg border border-white/[0.12] px-4 py-2.5 text-sm font-semibold text-[#DCE1EC] transition hover:bg-white/[0.06]"><UsersRound size={16}/>Teams</Link><button onClick={openCreateModal} className="inline-flex items-center gap-2 rounded-lg bg-[#687386] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#687386]/20 transition hover:-translate-y-0.5 hover:bg-[#7A8698]"><span className="text-lg leading-none">+</span>New repository</button></div>
+            </div>
 
-        <div className="absolute -right-60 top-[-180px] h-[620px] w-[620px] rounded-full border-[90px] border-[#E8D9DE] blur-sm" />
+            {error && <div role="alert" className="mb-6 flex items-center justify-between rounded-xl border border-[#987A68]/30 bg-[#987A68]/10 px-4 py-3 text-sm text-[#D7BCA8]"><span>{error}</span><button onClick={() => setError("")} className="px-2 text-lg">×</button></div>}
 
-        <div className="absolute left-1/3 top-0 h-96 w-96 rounded-full bg-[#B9BFDD]/10 blur-[120px]" />
+            <section className="yearly-activity mb-6 rounded-xl border border-white/[0.075] bg-[#111827] p-5" aria-label="Daily contribution activity for the last year">
+              <div className="mb-5 flex flex-wrap items-end justify-between gap-2"><div><h2 className="text-base font-semibold">Activity</h2><p className="mt-1 text-sm text-[#8994AA]">Daily contributions over the last year</p></div><span className="text-sm text-[#AAB4C5]">{contributionTotal} contributions</span></div>
+              <div className="overflow-x-auto py-8">
+                <div className="mb-2 ml-7 grid min-w-max grid-flow-col auto-cols-[12px] gap-1 text-[10px] text-[#8994AA]">{monthLabels.map(({ label, week }, index) => <span key={`${label}-${index}`} style={{ gridColumnStart: week + 1 }}>{label}</span>)}</div>
+                <div className="flex min-w-max gap-2">
+                  <div className="flex h-[104px] flex-col justify-between py-0.5 text-[9px] text-[#8994AA]"><span>Mon</span><span>Wed</span><span>Fri</span></div>
+                  <div className="grid grid-flow-col grid-rows-7 auto-cols-[12px] gap-1" role="img" aria-label="Daily contribution activity over the last year">{yearlyDays.map(({ day, count }) => {
+                    const level = count === 0 ? 0 : count < 2 ? 1 : count < 4 ? 2 : 3;
+                    const colors = theme === "dark" ? ["#262626", "#294631", "#3b7047", "#5b925f"] : ["#e9e9e2", "#d8e7d5", "#a9cba8", "#668f64"];
+                    return <span key={day.toISOString()} aria-label={`${day.toLocaleDateString()}: ${count} contribution${count === 1 ? "" : "s"}`} className="activity-cell group relative z-0 h-3 w-3 rounded-[3px] transition-colors hover:z-20" style={{ backgroundColor: colors[level] }}><span className="activity-tooltip pointer-events-none absolute left-0 top-full z-50 mt-1 whitespace-nowrap rounded-md bg-[#202020] px-2.5 py-1.5 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">{day.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })} · {count} contribution{count === 1 ? "" : "s"}</span></span>;
+                  })}</div>
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.07] pt-3"><p className="text-xs text-[#8994AA]">Lifetime activity <strong className="ml-1 font-semibold text-[#DCE1EC]">{activity.length}</strong></p><div className="flex items-center gap-2 text-xs text-[#8994AA]"><span>Less</span>{(theme === "dark" ? ["#262626", "#294631", "#3b7047", "#5b925f"] : ["#e9e9e2", "#d8e7d5", "#a9cba8", "#668f64"]).map((color) => <i key={color} className="h-3 w-3 rounded-sm" style={{ backgroundColor: color }} />)}<span>More</span></div></div>
+            </section>
 
-        <div className="absolute bottom-0 right-0 h-[450px] w-[450px] rounded-full bg-[#C3C6DF]/20 blur-[130px]" />
+            <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.85fr)]">
+              <section id="repositories" className="overflow-hidden rounded-xl border border-white/[0.075] bg-[#111827]">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] px-5 py-4"><div><h2 className="text-sm font-semibold">Repositories</h2><p className="mt-1 text-xs text-[#8994AA]">Your code, organized and always in sync.</p></div><span className="rounded-md bg-white/[0.05] px-2 py-1 text-[11px] text-[#AAB4C5]">{repositories.length}</span></div>
+                {loading ? <div className="grid gap-3 p-4">{[1,2,3].map((item) => <div key={item} className="h-28 animate-pulse rounded-lg bg-white/[0.04]"/>)}</div> : repositories.length === 0 ? <div className="px-6 py-14 text-center"><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#687386]/15 text-[#B0BAC7]"><FolderGit2 size={22}/></span><h3 className="mt-4 text-sm font-semibold">No repositories yet</h3><p className="mx-auto mt-2 max-w-xs text-xs leading-5 text-[#8994AA]">Create your first HAKI repository and start organizing your project.</p><button onClick={openCreateModal} className="mt-5 rounded-lg bg-[#687386] px-4 py-2.5 text-xs font-semibold text-white hover:bg-[#7A8698]">Create repository</button></div> : <div className="grid gap-3 p-4 md:grid-cols-2">{visibleRepositories.map((repository) => <RepositoryCard key={repository.id} repository={repository} onOpen={handleOpen} onEdit={openEditModal} onDelete={handleDelete} canManage={user?.role === "admin" || repository.ownerId === user?.id} />)}{visibleRepositories.length === 0 && <p className="col-span-full rounded-lg border border-white/[0.08] p-7 text-center text-sm text-[#8994AA]">No repositories match “{search}”.</p>}</div>}
+              </section>
 
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,#FFF8F1_90%)]" />
+              <section id="activity-heading" className="overflow-hidden rounded-xl border border-white/[0.075] bg-[#111827]" aria-labelledby="activity-title">
+                <div className="flex items-center justify-between border-b border-white/[0.07] px-5 py-4"><div><h2 id="activity-title" className="text-sm font-semibold">Recent activity</h2><p className="mt-1 text-xs text-[#8994AA]">Latest across your workspace</p></div><Activity size={17} className="text-[#B7C0CC]"/></div>
+                {activity.length ? <ol className="divide-y divide-white/[0.055]">{activity.slice(0, 8).map((item, index) => <li key={item.id} className="activity-row flex items-start gap-3 px-5 py-4" style={{ "--item-index": index }}><span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${item.kind === "commit" ? "bg-[#778397]/15 text-[#A9B4C3]" : "bg-[#687386]/15 text-[#B0BAC7]"}`}><GitCommitHorizontal size={16}/></span><div className="min-w-0 flex-1"><p className="break-words text-xs font-medium leading-5 text-[#DCE1EC]">{item.message}</p><button onClick={() => navigate(`/repositories/${item.repositoryId}`)} className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-[#B7C0CC] hover:text-[#E0E4E9]">{item.repositoryName}<ArrowUpRight size={11}/></button></div><time className="shrink-0 pt-1 text-[10px] text-[#748098]" dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</time></li>)}</ol> : <div className="px-5 py-12 text-center"><GitCommitHorizontal className="mx-auto mb-3 text-[#68758C]" size={23}/><p className="text-xs font-medium">Nothing here yet</p><p className="mt-1 text-[11px] text-[#8994AA]">New commits and repository updates will appear here.</p></div>}
+              </section>
+            </div>
+            <section className="mt-6 rounded-xl border border-white/[0.075] bg-[#111827] p-5" aria-labelledby="github-repositories-title">
+              <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="github-repositories-title" className="text-sm font-semibold">GitHub repositories</h2><p className="mt-1 max-w-2xl text-xs leading-5 text-[#8994AA]">Public repositories from your linked GitHub account and private repositories connected to teams through the GitHub App.</p></div><span className="rounded-md bg-white/[0.05] px-2 py-1 text-[11px] text-[#AAB4C5]">{githubRepositories.length} found</span></div>
+              {githubError ? <p role="status" className="mt-4 rounded-lg bg-white/[0.04] px-4 py-3 text-xs text-[#8994AA]">{githubError}</p> : githubRepositories.length ? <ul className="mt-3 max-h-72 divide-y divide-white/[0.06] overflow-y-auto">{githubRepositories.map((repository) => <li key={repository.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div className="min-w-0"><p className="truncate text-xs font-medium text-[#DCE1EC]">{repository.fullName}</p><p className="mt-1 text-[11px] text-[#8994AA]">{repository.private ? "Private" : "Public"}{repository.teamName ? ` · ${repository.teamName}` : ""}{repository.description ? ` · ${repository.description}` : ""}</p></div><a href={repository.htmlUrl} target="_blank" rel="noreferrer" className="shrink-0 text-[11px] font-medium text-[#B7C0CC] hover:text-white">Open on GitHub <ArrowUpRight className="ml-1 inline" size={12}/></a></li>)}</ul> : <p className="mt-4 text-xs text-[#8994AA]">No GitHub repositories found. Link a GitHub account or connect the HAKI GitHub App to a team.</p>}
+            </section>
+            <p className="mt-8 mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-[#8994AA]">Lifetime</p>
+            <section aria-label="Lifetime workspace totals" className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                { label: "Repositories", value: repositories.length, icon: FolderGit2, accent: "text-[#B0BAC7]", tone: "bg-[#687386]/15" },
+                { label: "Commits", value: activity.filter((item) => item.kind === "commit").length, icon: GitCommitHorizontal, accent: "text-[#A9B4C3]", tone: "bg-[#778397]/15" },
+                { label: "Public", value: publicCount, icon: Globe2, accent: "text-[#8294A5]", tone: "bg-[#8294A5]/15" },
+                { label: "Private", value: privateCount, icon: LockKeyhole, accent: "text-[#B8AEA0]", tone: "bg-[#B8AEA0]/15" },
+              ].map(({ label, value, icon: Icon, accent, tone }) => <article key={label} className="rounded-xl border border-white/[0.075] bg-[#111827] p-4 transition hover:border-white/[0.14]"><div className="flex items-center justify-between"><span className={`rounded-lg p-2 ${tone} ${accent}`}><Icon size={17}/></span><span className="text-[10px] uppercase tracking-wider text-[#68758C]">All time</span></div><p className="mt-4 text-xs text-[#8994AA]">{label}</p><p className="mt-1 text-2xl font-semibold tracking-tight">{String(value).padStart(2, "0")}</p></article>)}
+            </section>
 
+            <footer className="mt-7 border-t border-white/[0.06] pt-5 text-center text-[10px] text-[#68758C]">HAKI · Version Control Workspace · Data is stored in your HAKI workspace</footer>
+          </main>
+        </div>
       </div>
 
-      <header className="relative z-10 border-b border-white/[0.08] bg-[#FFF8F1]/90 backdrop-blur-2xl">
-
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-5 px-5 py-5 sm:px-8">
-
-          <div className="flex items-center gap-3">
-
-            <Link
-              to="/"
-              className="group flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl border border-[#E8D9DE] bg-white shadow-[0_0_25px_rgba(6,182,212,0.08)] transition duration-300 hover:scale-105 hover:border-[#A9B9D3] hover:shadow-[0_0_30px_rgba(6,182,212,0.25)]"
-            >
-              <img
-                src="/logo.png"
-                alt="HAKI"
-                className="h-full w-full object-contain"
-              />
-            </Link>
-
-            <div>
-              <h1 className="text-xl font-bold tracking-wide text-[#302D3B]">
-                HAKI
-              </h1>
-
-              <p className="text-xs font-medium text-[#827C89]">
-                Version Control System
-              </p>
-            </div>
-
-          </div>
-
-          <nav aria-label="Workspace" className="hidden items-center gap-1 lg:flex">
-            <Link to="/setting" className="rounded-lg px-3 py-2 text-sm font-medium text-[#706B79] hover:bg-white">Settings</Link>
-            <Link to="/import" className="rounded-lg px-3 py-2 text-sm font-medium text-[#706B79] hover:bg-white">Import</Link>
-            <Link to="/about" className="rounded-lg px-3 py-2 text-sm font-medium text-[#706B79] hover:bg-white">About</Link>
-          </nav>
-
-          <div className="flex max-w-full items-center gap-2 rounded-full border border-[#E8D9DE] bg-white px-2.5 py-2 sm:gap-3 sm:px-4">
-
-            <span className="h-2 w-2 animate-pulse rounded-full bg-[#A8B9AD] shadow-[0_0_12px_#34d399]" />
-
-            <UserAvatar user={user} onUserUpdate={onUserUpdate} size="h-9 w-9" />
-
-            <span className="hidden max-w-36 truncate text-sm font-medium text-[#706B79] sm:block">{user?.fullName || user?.email}</span>
-            <span className="rounded-full bg-[#EAD9DF] px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-[#655469] sm:px-2.5 sm:text-[10px]">{user?.role === "admin" ? "Admin" : "Member"}</span>
-            <button onClick={onSignOut} className="shrink-0 text-xs font-semibold text-[#706B79] transition hover:text-[#302D3B]">Sign out</button>
-
-          </div>
-
-          <nav aria-label="Workspace" className="flex basis-full gap-1 overflow-x-auto whitespace-nowrap pb-1 lg:hidden">
-            <Link to="/setting" className="rounded-lg px-3 py-2 text-sm font-medium text-[#706B79] hover:bg-white">Settings</Link>
-            <Link to="/import" className="rounded-lg px-3 py-2 text-sm font-medium text-[#706B79] hover:bg-white">Import</Link>
-            <Link to="/about" className="rounded-lg px-3 py-2 text-sm font-medium text-[#706B79] hover:bg-white">About</Link>
-          </nav>
-
-        </div>
-
-      </header>
-
-      <main className="relative z-10 mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-12">
-
-        <section className="mb-8 overflow-hidden rounded-3xl border border-[#E8D9DE] bg-gradient-to-br from-[#FFF0DF] via-[#FBE3DF] to-[#C3C6DF] p-7 shadow-[0_0_40px_rgba(15,23,42,0.14)] sm:p-9">
-
-          <div className="flex flex-col items-start justify-between gap-8 lg:flex-row lg:items-center">
-
-            <div>
-
-              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#E8D9DE] bg-[#BFC3DF]/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-widest text-[#8293B2]">
-
-                <span className="h-1.5 w-1.5 rounded-full bg-[#C3C6DF] shadow-[0_0_10px_#22d3ee]" />
-
-                Developer Workspace
-
-              </div>
-
-              <h2 className="max-w-3xl text-4xl font-bold leading-tight tracking-tight text-[#302D3B] sm:text-5xl">
-                Your repositories<span className="text-[#7187AC]">.</span>
-
-              </h2>
-
-              <p className="mt-5 max-w-2xl text-base leading-7 text-[#706B79] sm:text-lg">
-
-                Create and organize your projects in one place.
-
-              </p>
-
-            </div>
-
-            <button
-              onClick={openCreateModal}
-              className="group inline-flex shrink-0 items-center justify-center gap-3 rounded-xl border border-[#C3C6DF] bg-[#B9BFDD] px-6 py-4 text-sm font-semibold text-[#302D3B] shadow-[0_0_30px_rgba(37,99,235,0.25)] transition duration-300 hover:-translate-y-1 hover:bg-[#AEB6D8] hover:shadow-[0_0_40px_rgba(37,99,235,0.45)]"
-            >
-              <span className="text-xl">+</span>
-              New Repository
-              <span className="transition duration-300 group-hover:translate-x-1">
-                →
-              </span>
-            </button>
-
-          </div>
-
-        </section>
-
-        <section aria-label="Repository overview" className="mb-8 grid gap-4 sm:grid-cols-3">
-          {[
-            { label: "Repositories", value: repositories.length, icon: FolderGit2, tint: "bg-[#E6EFFD] text-[#7187AC]" },
-            { label: "Public", value: publicCount, icon: Globe2, tint: "bg-[#E8F4EC] text-[#64816D]" },
-            { label: "Private", value: privateCount, icon: LockKeyhole, tint: "bg-[#F3E9F0] text-[#8B7188]" },
-          ].map(({ label, value, icon: Icon, tint }) => <article key={label} className="rounded-2xl border border-[#E8D9DE] bg-white/85 p-5 shadow-sm"><div className="flex items-center justify-between"><span className={`rounded-xl p-3 ${tint}`}><Icon size={20} /></span><span className="text-xs font-medium text-[#958F9B]">LOCAL WORKSPACE</span></div><p className="mt-4 text-sm text-[#706B79]">{label}</p><p className="mt-1 text-3xl font-bold text-[#302D3B]">{String(value).padStart(2, "0")}</p></article>)}
-        </section>
-
-        {error && (
-
-          <div className="mb-7 flex items-center justify-between gap-4 rounded-xl border border-[#E5BEBB] bg-[#FBE3DF]/70 px-5 py-4 text-sm text-[#A96060] shadow-[0_0_25px_rgba(239,68,68,0.05)]">
-
-            <span>{error}</span>
-
-            <button
-              onClick={() => setError("")}
-              className="text-xl text-[#9B5555] transition hover:text-[#302D3B]"
-            >
-              ×
-            </button>
-
-          </div>
-
-        )}
-
-        <section>
-
-          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
-            <div>
-
-              <h2 className="text-xl font-semibold text-[#302D3B]">
-                Repositories
-              </h2>
-
-              {!loading && (
-
-                <p className="mt-2 text-sm text-[#827C89]">
-                  {repositories.length}{" "}
-                  {repositories.length === 1
-                    ? "repository"
-                    : "repositories"}
-                </p>
-
-              )}
-
-            </div>
-
-            <label className="relative block w-full sm:w-72"><Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#958F9B]" /><span className="sr-only">Search repositories</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search repositories…" className="w-full rounded-xl border border-[#E8D9DE] bg-white/85 py-2.5 pl-10 pr-4 text-sm outline-none focus:border-[#A9B9D3]" /></label>
-
-          </div>
-
-          {loading ? (
-
-            <div className="grid gap-5 md:grid-cols-2">
-
-              {[1, 2, 3, 4].map((item) => (
-
-                <div
-                  key={item}
-                  className="h-52 animate-pulse rounded-2xl border border-[#E8D9DE] bg-white"
-                />
-
-              ))}
-
-            </div>
-
-          ) : repositories.length === 0 ? (
-
-            <div className="rounded-3xl border border-dashed border-[#DCD2DC] bg-white px-6 py-20 text-center shadow-[0_0_40px_rgba(15,23,42,0.2)]">
-
-              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl border border-[#E8D9DE] bg-[#BFC3DF]/5 text-3xl shadow-[0_0_30px_rgba(6,182,212,0.08)]">
-                📁
-              </div>
-
-              <h3 className="mt-6 text-xl font-semibold text-[#484451]">
-                No repositories yet
-              </h3>
-
-              <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#827C89]">
-                Create your first HAKI repository and start managing your
-                project files.
-              </p>
-
-              <button
-                onClick={openCreateModal}
-                className="mt-7 rounded-xl bg-[#B9BFDD] px-6 py-3 text-sm font-semibold text-[#302D3B] shadow-[0_0_25px_rgba(37,99,235,0.2)] transition duration-300 hover:bg-[#AEB6D8] hover:shadow-[0_0_35px_rgba(37,99,235,0.4)]"
-              >
-                Create Repository
-              </button>
-
-            </div>
-
-          ) : (
-
-            <div className="grid gap-5 md:grid-cols-2">
-
-              {visibleRepositories.map((repository) => (
-
-                <RepositoryCard
-                  key={repository.id}
-                  repository={repository}
-                  onOpen={handleOpen}
-                  onEdit={openEditModal}
-                  onDelete={handleDelete}
-                  canManage={user?.role === "admin" || repository.ownerId === user?.id}
-                />
-
-              ))}
-
-              {visibleRepositories.length === 0 && repositories.length > 0 && <p className="col-span-full rounded-2xl border border-[#E8D9DE] bg-white p-8 text-center text-sm text-[#827C89]">No repositories match “{search}”.</p>}
-
-            </div>
-
-          )}
-
-        </section>
-
-      </main>
-
-      <footer className="relative z-10 mx-auto max-w-7xl border-t border-white/[0.06] px-5 py-6 text-center text-xs text-[#958F9B] sm:px-8">
-        HAKI Version Control · Frontend preview · Data stays in this browser
-      </footer>
-
-      <RepositoryModal
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onSubmit={handleSubmit}
-        form={form}
-        setForm={setForm}
-        editing={Boolean(editingRepository)}
-      />
-
+      <RepositoryModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onSubmit={handleSubmit} form={form} setForm={setForm} editing={Boolean(editingRepository)} />
     </div>
   );
 }

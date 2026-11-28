@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { sendChatMessage } from "../services/api";
+import HakiLogo from "./HakiLogo.jsx";
 
 const ui = {
   greeting: "Hi! I’m Haki Assistant. Ask me anything about using HAKI.",
@@ -21,25 +23,39 @@ const ui = {
     "How do I import a ZIP file?",
     "How do I change my profile or theme?",
     "Where is my project data stored?",
-    "How do I sign in or reset my password?",
+    "How do I sign in or change my password?",
     "How can I publish this project on GitHub?",
     "How do I connect the Gemini API?",
   ],
 };
 
-function Chatbot() {
+function Chatbot({ theme = "dark" }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isPinned, setIsPinned] = useState(false);
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState("");
+  const [fileContext, setFileContext] = useState(null);
   const endRef = useRef(null);
   const inputRef = useRef(null);
+  const hoverCloseTimer = useRef(null);
   const conversation = messages.length ? messages : [{ role: "assistant", content: ui.greeting }];
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isOpen]);
+
+  useEffect(() => {
+    function receiveFileContext(event) {
+      setFileContext(event.detail);
+      setDraft("Please explain this file and point out anything I should review.");
+      setIsPinned(true);
+      setIsOpen(true);
+    }
+    window.addEventListener("haki:chat-context", receiveFileContext);
+    return () => window.removeEventListener("haki:chat-context", receiveFileContext);
+  }, []);
 
   async function sendQuestion(question) {
     const content = question.trim();
@@ -52,13 +68,7 @@ function Chatbot() {
     setIsSending(true);
 
     try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: content, history: history.slice(-12) }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || ui.error);
+      const result = await sendChatMessage({ message: content, history: history.slice(-12), context: fileContext });
       setMessages((current) => [...current, { role: "assistant", content: result.reply }]);
     } catch (requestError) {
       setError(requestError.message || ui.error);
@@ -73,16 +83,26 @@ function Chatbot() {
     sendQuestion(draft);
   }
 
+  function cancelHoverClose() {
+    window.clearTimeout(hoverCloseTimer.current);
+  }
+
   return (
-    <div className="fixed bottom-5 right-5 z-50 font-sans sm:bottom-32 sm:right-7">
+    <div
+      className="chatbot-shell fixed right-0 top-1/2 z-50 -translate-y-1/2 font-sans"
+      data-theme={theme}
+      onMouseEnter={() => { cancelHoverClose(); if (!isPinned) setIsOpen(true); }}
+      onMouseLeave={() => { if (!isPinned) hoverCloseTimer.current = window.setTimeout(() => setIsOpen(false), 180); }}
+    >
       {isOpen && (
-        <section aria-label="Haki Assistant chat" className="mb-3 flex h-[min(620px,calc(100dvh-110px))] w-[min(410px,calc(100vw-32px))] flex-col overflow-hidden rounded-2xl border border-[#DCD2DC] bg-[#FFF8F1] text-[#302D3B] shadow-2xl shadow-black/50">
+        <section aria-label="Haki Assistant chat" onMouseEnter={cancelHoverClose} className="fixed right-12 top-1/2 flex h-[min(520px,calc(100dvh-32px))] w-[min(350px,calc(100vw-64px))] -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-white/30 bg-[#FFF8F1]/90 text-[#302D3B] shadow-2xl shadow-black/35 backdrop-blur-xl">
           <header className="flex items-center justify-between gap-2 border-b border-[#E8D9DE] bg-white px-4 py-3.5">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#BFC3DF]/10 text-xl" aria-hidden="true">✦</div>
-              <div className="min-w-0"><h2 className="text-sm font-semibold">{ui.title}</h2><p className="text-xs text-[#718A7E]">{ui.subtitle}</p></div>
+            <div className="min-w-0"><h2 className="text-sm font-semibold">{ui.title}</h2><p className="text-xs text-[#718A7E]">{fileContext ? `Context: ${fileContext.filePath}` : ui.subtitle}</p></div>
             </div>
-            <button type="button" onClick={() => setIsOpen(false)} aria-label={ui.close} className="rounded-lg px-2 py-1 text-xl text-[#706B79] hover:bg-[#F0E8EC] hover:text-[#302D3B]">×</button>
+            {fileContext && <button type="button" onClick={() => setFileContext(null)} className="rounded-lg border border-[#DCD2DC] px-2 py-1 text-xs">Clear context</button>}
+            <button type="button" onClick={() => { setIsPinned(false); setIsOpen(false); }} aria-label={ui.close} className="rounded-lg px-2 py-1 text-xl text-[#706B79] hover:bg-[#F0E8EC] hover:text-[#302D3B]">×</button>
           </header>
 
           <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4" aria-live="polite">
@@ -121,8 +141,18 @@ function Chatbot() {
       )}
 
       <div className="flex justify-end">
-        <button type="button" onClick={() => { setIsOpen((open) => !open); if (!isOpen) window.setTimeout(() => inputRef.current?.focus(), 50); }} aria-expanded={isOpen} aria-label={isOpen ? ui.close : ui.open} className="flex items-center gap-2 rounded-full border border-[#D9D8E8] bg-white px-5 py-3 text-sm font-semibold text-[#302D3B] shadow-lg shadow-[#A9B9D3]/30 transition hover:-translate-y-0.5 hover:bg-[#F0E8EC]">
-          <span aria-hidden="true" className="text-lg text-[#8293B2]">✦</span>{isOpen ? ui.closeAssistant : ui.open}
+        <button type="button" onClick={() => {
+          if (isPinned) {
+            cancelHoverClose();
+            setIsPinned(false);
+            setIsOpen(false);
+          } else {
+            setIsPinned(true);
+            setIsOpen(true);
+            window.setTimeout(() => inputRef.current?.focus(), 50);
+          }
+        }} aria-expanded={isOpen} aria-label={isOpen ? ui.close : ui.open} title={ui.open} className="flex h-12 w-12 items-center justify-center rounded-full border-0 bg-transparent shadow-none transition hover:bg-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8293B2]">
+          <HakiLogo className="h-9 w-9 opacity-90 transition-transform hover:scale-110 hover:opacity-100" />
         </button>
       </div>
     </div>

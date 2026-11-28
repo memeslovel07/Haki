@@ -8,6 +8,7 @@ import { createAccessToken } from "../src/modules/auth/access-token.service.js";
 const email = `review-decision-${randomUUID()}@example.com`;
 
 let userId: string;
+const authorIds: string[] = [];
 let accessToken: string;
 let teamId: string;
 let repositoryId: string;
@@ -17,10 +18,19 @@ const createdSubmissionIds: string[] = [];
 const headCommitSha = "b".repeat(40);
 
 async function createSubmission(status: "IN_REVIEW" | "DRAFT" = "IN_REVIEW") {
+  const author = await prisma.user.create({
+    data: {
+      email: `review-author-${randomUUID()}@example.com`,
+      name: "Review Submission Author",
+    },
+    select: { id: true },
+  });
+  authorIds.push(author.id);
+
   const submission = await prisma.submission.create({
     data: {
       repositoryId,
-      submittedById: userId,
+      submittedById: author.id,
       title: "Review Decision Test",
       sourceBranch: "feature/review",
       targetBranch: "main",
@@ -104,6 +114,10 @@ describe("POST /api/v1/submissions/:submissionId/reviews", () => {
         where: { submissionId: { in: createdSubmissionIds } },
       });
 
+      await prisma.auditEvent.deleteMany({
+        where: { teamId },
+      });
+
       await prisma.validationFinding.deleteMany({
         where: {
           validationRun: {
@@ -128,6 +142,7 @@ describe("POST /api/v1/submissions/:submissionId/reviews", () => {
     await prisma.teamMember.deleteMany({ where: { teamId } });
     await prisma.team.deleteMany({ where: { id: teamId } });
     await prisma.user.deleteMany({ where: { id: userId } });
+    await prisma.user.deleteMany({ where: { id: { in: authorIds } } });
     await prisma.$disconnect();
   });
 
@@ -269,6 +284,22 @@ describe("POST /api/v1/submissions/:submissionId/reviews", () => {
       .expect(409);
 
     expect(response.body.error.code).toBe("INVALID_STATE");
+  });
+
+  it("rejects authors from approving their own submission", async () => {
+    const submissionId = await createSubmission();
+    await prisma.submission.update({
+      where: { id: submissionId },
+      data: { submittedById: userId },
+    });
+
+    const response = await request(app)
+      .post(`/api/v1/submissions/${submissionId}/reviews`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ decision: "APPROVED" })
+      .expect(403);
+
+    expect(response.body.error.code).toBe("SELF_REVIEW");
   });
 
   it.each(["APPROVED", "CHANGES_REQUESTED", "REJECTED", "COMMENTED"] as const)(

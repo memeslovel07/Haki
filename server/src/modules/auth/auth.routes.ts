@@ -10,14 +10,18 @@ import {
   loginRateLimiter,
   refreshRateLimiter,
   registrationRateLimiter,
+  passwordResetRateLimiter,
 } from "../../middleware/auth-rate-limit.middleware.js";
 
 import { validateRequestOrigin } from "../../middleware/csrf.middleware.js";
+import { authenticateAccessToken } from "../../middleware/auth.middleware.js";
 
 import {
   startGitHubOAuth,
+  startGitHubLink,
   handleGitHubCallback,
 } from "./github-oauth.controller.js";
+import { requestPasswordReset, resetPassword } from "./password-reset.controller.js";
 
 const router = Router();
 
@@ -47,6 +51,10 @@ router.post(
   validateRequestOrigin,
   logoutUser
 );
+
+router.post("/password/forgot", validateRequestOrigin, passwordResetRateLimiter, requestPasswordReset);
+router.post("/password/reset", validateRequestOrigin, passwordResetRateLimiter, resetPassword);
+router.post("/github/link", validateRequestOrigin, authenticateAccessToken, startGitHubLink);
 
 router.get("/github", startGitHubOAuth);
 router.get("/github/callback", handleGitHubCallback);

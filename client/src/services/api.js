@@ -1,71 +1,22 @@
-// Local-only demo store. Use a secure backend for real accounts and shared data.
-const DB_KEY = "haki_frontend_demo_v1";
-const TOKEN_KEY = "haki_token";
-const avatars = ["member-1", "member-2", "member-3", "member-4", "member-5", "member-6"];
-
-function dbRead() {
-  try {
-    const value = JSON.parse(localStorage.getItem(DB_KEY) || "{}");
-    return { users: value.users || [], pending: value.pending || {}, sessions: value.sessions || {}, repositories: value.repositories || [], files: value.files || [], commits: value.commits || [] };
-  } catch {
-    return { users: [], pending: {}, sessions: {}, repositories: [], files: [], commits: [] };
-  }
-}
-function dbWrite(db) {
-  try { localStorage.setItem(DB_KEY, JSON.stringify(db)); }
-  catch { throw new Error("Browser storage is full. Remove a large file or image and try again."); }
-}
-function id(prefix) { return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`; }
-function code() { return String(Math.floor(100000 + Math.random() * 900000)); }
-async function hash(password) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(password));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-function safeUser(user) { if (!user) return null; const { passwordHash, ...safe } = user; return safe; }
-function activeUser(db) {
-  const token = localStorage.getItem(TOKEN_KEY);
-  const userId = token ? db.sessions[token] : null;
-  return db.users.find((user) => user.id === userId) || null;
-}
-function requireUser(db) { const user = activeUser(db); if (!user) throw new Error("Please sign in to continue."); return user; }
-function startSession(db, user) {
-  const token = id("local");
-  db.sessions[token] = user.id;
-  dbWrite(db);
-  return { token, user: safeUser(user) };
-}
-
-const AUTH_BASE = "http://localhost:5000/api/v1/auth";
+const API_BASE = "/api/v1";
+let accessToken = "";
 
 function localUserFromBackend(backendUser) {
-  const db = dbRead();
   const email = String(backendUser.email || "").trim().toLowerCase();
-  let user = db.users.find((entry) => entry.email?.toLowerCase() === email);
-
-  if (!user) {
-    user = {
-      id: id("user"),
-      fullName: backendUser.name || email.split("@")[0],
-      username: email.split("@")[0],
-      email,
-      role: "member",
-      avatarId: avatars[db.users.length % avatars.length],
-      avatarDataUrl: "",
-      createdAt: backendUser.createdAt || new Date().toISOString(),
-      passwordHash: "",
-    };
-    db.users.push(user);
-  } else {
-    user.fullName = backendUser.name || user.fullName;
-    user.email = email;
-  }
-
-  dbWrite(db);
-  return user;
+  const profile = backendUser.profile && typeof backendUser.profile === "object" ? backendUser.profile : {};
+  return {
+    ...backendUser,
+    fullName: backendUser.name || email.split("@")[0],
+    username: profile.username || email.split("@")[0],
+    bio: profile.bio || "",
+    location: profile.location || "",
+    avatarDataUrl: profile.avatarDataUrl || "",
+    linkedProviders: backendUser.oauthAccounts?.map((account) => account.provider) || backendUser.linkedProviders || [],
+  };
 }
 
 async function authRequest(endpoint, options = {}) {
-  const response = await fetch(`${AUTH_BASE}${endpoint}`, {
+  const response = await fetch(`${API_BASE}/auth${endpoint}`, {
     credentials: "include",
     ...options,
     headers: {
@@ -78,13 +29,34 @@ async function authRequest(endpoint, options = {}) {
   if (!response.ok) {
     throw new Error(body?.error?.message || body?.error || body?.message || "Authentication failed.");
   }
-  return body?.data ?? body;
+  const result = body?.data ?? body;
+  if (result?.accessToken) accessToken = result.accessToken;
+  return result;
 }
 
-function establishLocalSession(backendUser) {
-  const db = dbRead();
-  const user = localUserFromBackend(backendUser);
-  return startSession(dbRead(), user);
+async function apiRequest(path, options = {}, retry = true) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    credentials: "include",
+    ...options,
+    headers: {
+      ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...options.headers,
+    },
+  });
+  if (response.status === 401 && retry && !path.startsWith("/auth/")) {
+    await refreshBackendSession();
+    return apiRequest(path, options, false);
+  }
+  if (response.status === 204) return null;
+  const body = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(body?.error?.message || body?.error || body?.message || "The request could not be completed.");
+  return body && Object.hasOwn(body, "data") ? body.data : body;
+}
+
+async function establishLocalSession(backendUser) {
+  const current = await apiRequest("/users/me", {}, false);
+  return { user: localUserFromBackend({ ...backendUser, ...(current.user ?? current) }) };
 }
 
 export async function registerAccount({ fullName, email, password }) {
@@ -126,116 +98,176 @@ export async function loginWithGitHubProfile() {
   return refreshBackendSession();
 }
 
+export async function createGitHubLink() {
+  return apiRequest("/auth/github/link", { method: "POST" });
+}
+
 export async function getCurrentUser() {
-  const user = requireUser(dbRead());
-  return { user: safeUser(user) };
+  const result = await apiRequest("/users/me");
+  return { user: localUserFromBackend(result.user ?? result) };
 }
 
 export async function logoutAccount() {
   try {
-    await authRequest("/logout", { method: "POST" });
+    await apiRequest("/auth/logout", { method: "POST" }, false);
   } finally {
-    const db = dbRead();
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (token) delete db.sessions[token];
-    dbWrite(db);
-    localStorage.removeItem(TOKEN_KEY);
+    accessToken = "";
   }
 }
 
-export async function requestPasswordReset() {
-  throw new Error("Password reset is not yet supported by the server.");
+export async function sendChatMessage({ message, history, context }) {
+  return apiRequest("/chat", {
+    method: "POST",
+    body: JSON.stringify({ message, history, ...(context ? { context } : {}) }),
+  });
 }
 
-export async function resetPassword() {
-  throw new Error("Password reset is not yet supported by the server.");
+export async function getMyTeams() { return apiRequest("/teams"); }
+export const getTeams = getMyTeams;
+export async function createTeam(name) { return apiRequest("/teams", { method: "POST", body: JSON.stringify({ name }) }); }
+export async function getMyTeamInvitations() { return apiRequest("/teams/invitations"); }
+export async function respondToTeamInvitation(invitationId, accept) { return apiRequest(`/teams/invitations/${encodeURIComponent(invitationId)}/respond`, { method: "POST", body: JSON.stringify({ accept }) }); }
+export async function getTeamMembers(teamId) { return apiRequest(`/teams/${encodeURIComponent(teamId)}/members`); }
+export async function inviteTeamMember(teamId, email, role) { return apiRequest(`/teams/${encodeURIComponent(teamId)}/invitations`, { method: "POST", body: JSON.stringify({ email, role }) }); }
+export async function changeTeamMemberRole(teamId, userId, role) { return apiRequest(`/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}/role`, { method: "PATCH", body: JSON.stringify({ role }) }); }
+export async function leaveTeam(teamId) { return apiRequest(`/teams/${encodeURIComponent(teamId)}/leave`, { method: "POST" }); }
+export async function removeTeamMember(teamId, userId) { return apiRequest(`/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`, { method: "DELETE" }); }
+export async function transferTeamOwnership(teamId, userId) { return apiRequest(`/teams/${encodeURIComponent(teamId)}/ownership`, { method: "POST", body: JSON.stringify({ userId }) }); }
+export async function getTeamSettings(teamId) { return apiRequest(`/teams/${encodeURIComponent(teamId)}/settings`); }
+export async function updateTeamSettings(teamId, settings) { return apiRequest(`/teams/${encodeURIComponent(teamId)}/settings`, { method: "PUT", body: JSON.stringify(settings) }); }
+export async function getGitHubRepositories() { return { data: await apiRequest("/github/me/repositories") }; }
+export async function startGitHubInstallation(teamId) { return apiRequest(`/github/teams/${encodeURIComponent(teamId)}/installations/start`, { method: "POST" }); }
+export async function getTeamGitHubRepositories(teamId) { return apiRequest(`/github/teams/${encodeURIComponent(teamId)}/repositories`); }
+export async function connectTeamGitHubRepository(teamId, installationId, repositoryId) { return apiRequest(`/github/teams/${encodeURIComponent(teamId)}/repositories`, { method: "POST", body: JSON.stringify({ installationId, repositoryId }) }); }
+export async function getGitHubRepositorySettings(repositoryId) { return apiRequest(`/github/repositories/${encodeURIComponent(repositoryId)}/settings`); }
+export async function updateGitHubRepositorySettings(repositoryId, settings) { return apiRequest(`/github/repositories/${encodeURIComponent(repositoryId)}/settings`, { method: "PUT", body: JSON.stringify(settings) }); }
+export async function addTeamMember(teamId, member) { return inviteTeamMember(teamId, member.email, member.role); }
+export async function updateTeamMemberRole(teamId, memberId, role) { return changeTeamMemberRole(teamId, memberId, role); }
+
+export async function validateSubmission(submissionId) {
+  return apiRequest(`/submissions/${encodeURIComponent(submissionId)}/validate`, { method: "POST" });
 }
 
-export async function changeAccountPassword() {
-  throw new Error("Changing passwords is not yet supported by the server.");
+export async function getSubmissionValidation(submissionId) {
+  return apiRequest(`/submissions/${encodeURIComponent(submissionId)}/validation`);
+}
+
+export async function getSubmissionDiff(submissionId) {
+  return apiRequest(`/submissions/${encodeURIComponent(submissionId)}/diff`);
+}
+
+export async function requestSubmissionReview(submissionId) {
+  return apiRequest(`/submissions/${encodeURIComponent(submissionId)}/request-review`, { method: "POST" });
+}
+
+export async function getSubmissionReviews(submissionId) {
+  return apiRequest(`/submissions/${encodeURIComponent(submissionId)}/reviews`);
+}
+
+export async function submitSubmissionReview(submissionId, { decision, body }) {
+  return apiRequest(`/submissions/${encodeURIComponent(submissionId)}/reviews`, {
+    method: "POST",
+    body: JSON.stringify({ decision, body }),
+  });
+}
+
+export async function addSubmissionReviewComment(submissionId, reviewId, comment) {
+  return apiRequest(`/submissions/${encodeURIComponent(submissionId)}/reviews/${encodeURIComponent(reviewId)}/comments`, {
+    method: "POST",
+    body: JSON.stringify(comment),
+  });
+}
+
+export async function getGovernanceRepositories() {
+  return apiRequest("/submissions/repositories");
+}
+
+export async function getRepositoryBranches(repoId) {
+  return apiRequest(`/submissions/repositories/${encodeURIComponent(repoId)}/branches`);
+}
+
+export async function getBranchCommits(repoId, branch) {
+  return apiRequest(`/submissions/repositories/${encodeURIComponent(repoId)}/commits?branch=${encodeURIComponent(branch)}`);
+}
+
+export async function getSubmissions() {
+  return apiRequest("/submissions");
+}
+
+export async function createSubmission(details) {
+  return apiRequest("/submissions", { method: "POST", body: JSON.stringify(details) });
+}
+
+export async function createGitHubInstallState() {
+  return apiRequest("/github/install-state", { method: "POST" });
+}
+
+export async function requestPasswordReset(email) {
+  if (!email) throw new Error("An email address is required.");
+  return authRequest("/password/forgot", { method: "POST", body: JSON.stringify({ email }) });
+}
+
+export async function resetPassword(token, password) {
+  return authRequest("/password/reset", { method: "POST", body: JSON.stringify({ token, password }) });
+}
+
+export async function changeAccountPassword({ currentPassword, newPassword }) {
+  return apiRequest("/users/password", { method: "PUT", body: JSON.stringify({ currentPassword, newPassword }) });
+}
+
+export async function getAccountSettings() {
+  return apiRequest("/users/settings");
+}
+
+export async function updateAccountSettings(settings) {
+  return apiRequest("/users/settings", { method: "PUT", body: JSON.stringify(settings) });
 }
 
 export async function updateProfileAvatar(avatarDataUrl) {
-  const db = dbRead();
-  const user = requireUser(db);
-  user.avatarDataUrl = avatarDataUrl;
-  dbWrite(db);
-  return { user: safeUser(user) };
+  const result = await apiRequest("/users/me", { method: "PATCH", body: JSON.stringify({ avatarDataUrl }) });
+  return { user: localUserFromBackend(result.user ?? result) };
 }
 
 export async function updateAccountProfile(profile) {
-  const db = dbRead();
-  const user = requireUser(db);
-  const email = String(profile.email || user.email).trim().toLowerCase();
-
-  if (db.users.some((entry) => entry.id !== user.id && entry.email === email)) {
-    throw new Error("That email is already used by another local account.");
-  }
-
-  user.fullName = String(profile.name || user.fullName).trim();
-  user.username = String(profile.username || user.username).trim();
-  user.email = email;
-  user.bio = String(profile.bio || "").trim();
-  user.location = String(profile.location || "").trim();
-  dbWrite(db);
-  return { user: safeUser(user) };
+  const result = await apiRequest("/users/me", { method: "PATCH", body: JSON.stringify(profile) });
+  return { user: localUserFromBackend(result.user ?? result) };
 }
 
 export async function getRepositories() {
-  const db = dbRead(); const user = requireUser(db);
-  return { data: db.repositories.filter((repo) => repo.ownerId === user.id || repo.visibility === "public") };
+  return { data: await apiRequest("/repositories") };
 }
 export async function getRepository(repoId) {
-  const db = dbRead(); const user = requireUser(db);
-  const repo = db.repositories.find((entry) => entry.id === repoId && (entry.ownerId === user.id || entry.visibility === "public"));
-  if (!repo) throw new Error("Repository was not found or is private."); return { data: repo };
+  return { data: await apiRequest(`/repositories/${encodeURIComponent(repoId)}`) };
 }
 export async function createRepository(details) {
-  const db = dbRead(); const user = requireUser(db); const name = String(details.name || "").trim();
-  if (!name) throw new Error("Repository name is required.");
-  if (db.repositories.some((repo) => repo.ownerId === user.id && repo.name.toLowerCase() === name.toLowerCase())) throw new Error("A repository with this name already exists.");
-  const repo = { id: id("repo"), name, description: String(details.description || "").trim(), visibility: details.visibility === "public" ? "public" : "private", ownerId: user.id, ownerName: user.fullName, defaultBranch: "main", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-  db.repositories.unshift(repo); dbWrite(db); return { data: repo };
+  return { data: await apiRequest("/repositories", { method: "POST", body: JSON.stringify(details) }) };
+}
+export async function importZipRepository(file, name) {
+  return apiRequest(`/repositories/import?name=${encodeURIComponent(name)}`, {
+    method: "POST",
+    body: await file.arrayBuffer(),
+    headers: { "Content-Type": "application/zip" },
+  });
 }
 export async function updateRepository(repoId, changes) {
-  const db = dbRead(); const user = requireUser(db); const repo = db.repositories.find((entry) => entry.id === repoId);
-  if (!repo || (repo.ownerId !== user.id && user.role !== "admin")) throw new Error("You do not have permission to change this repository.");
-  Object.assign(repo, { name: String(changes.name ?? repo.name).trim(), description: String(changes.description ?? repo.description).trim(), visibility: changes.visibility === "public" ? "public" : "private", updatedAt: new Date().toISOString() });
-  dbWrite(db); return { data: repo };
+  return { data: await apiRequest(`/repositories/${encodeURIComponent(repoId)}`, { method: "PATCH", body: JSON.stringify(changes) }) };
 }
 export async function deleteRepository(repoId) {
-  const db = dbRead(); const user = requireUser(db); const repo = db.repositories.find((entry) => entry.id === repoId);
-  if (!repo || (repo.ownerId !== user.id && user.role !== "admin")) throw new Error("You do not have permission to delete this repository.");
-  db.repositories = db.repositories.filter((entry) => entry.id !== repoId); db.files = db.files.filter((entry) => entry.repositoryId !== repoId); db.commits = db.commits.filter((entry) => entry.repositoryId !== repoId);
-  dbWrite(db); return { message: "Repository deleted." };
+  return apiRequest(`/repositories/${encodeURIComponent(repoId)}`, { method: "DELETE" });
 }
-export async function getFiles(repoId) { await getRepository(repoId); return { data: dbRead().files.filter((file) => file.repositoryId === repoId).sort((a, b) => a.path.localeCompare(b.path)) }; }
-export async function getFile(repoId, fileId) { const result = await getFiles(repoId); const file = result.data.find((entry) => entry.id === fileId); if (!file) throw new Error("File was not found."); return { data: file }; }
+export async function getFiles(repoId) { return { data: await apiRequest(`/repositories/${encodeURIComponent(repoId)}/files`) }; }
+export async function getFile(repoId, fileId) { return { data: (await getFiles(repoId)).data.find((file) => file.id === fileId) }; }
 export async function createFile(repoId, details) {
-  const db = dbRead(); const user = requireUser(db); const repo = db.repositories.find((entry) => entry.id === repoId && (entry.ownerId === user.id || entry.visibility === "public"));
-  if (!repo) throw new Error("Repository was not found."); if (repo.ownerId !== user.id && user.role !== "admin") throw new Error("Only the owner can add files.");
-  const path = String(details.path || details.name || "").trim(); if (!path) throw new Error("File path is required.");
-  if (db.files.some((file) => file.repositoryId === repoId && file.path === path)) throw new Error("A file with this path already exists.");
-  const file = { id: id("file"), repositoryId: repoId, name: String(details.name || path.split("/").pop()), path, content: String(details.content || ""), encoding: details.encoding || "utf8", mimeType: details.mimeType || "text/plain", size: Number(details.size || 0), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-  db.files.push(file); repo.updatedAt = new Date().toISOString(); dbWrite(db); return { data: file };
+  return { data: await apiRequest(`/repositories/${encodeURIComponent(repoId)}/files`, { method: "POST", body: JSON.stringify(details) }) };
 }
 export async function updateFile(repoId, fileId, changes) {
-  const db = dbRead(); const user = requireUser(db); const repo = db.repositories.find((entry) => entry.id === repoId);
-  if (!repo || (repo.ownerId !== user.id && user.role !== "admin")) throw new Error("You do not have permission to edit files here.");
-  const file = db.files.find((entry) => entry.repositoryId === repoId && entry.id === fileId); if (!file) throw new Error("File was not found.");
-  if (changes.content !== undefined) file.content = String(changes.content); file.updatedAt = new Date().toISOString(); repo.updatedAt = file.updatedAt; dbWrite(db); return { data: file };
+  return { data: await apiRequest(`/repositories/${encodeURIComponent(repoId)}/files/${encodeURIComponent(fileId)}`, { method: "PATCH", body: JSON.stringify(changes) }) };
 }
 export async function deleteFile(repoId, fileId) {
-  const db = dbRead(); const user = requireUser(db); const repo = db.repositories.find((entry) => entry.id === repoId);
-  if (!repo || (repo.ownerId !== user.id && user.role !== "admin")) throw new Error("You do not have permission to delete files here.");
-  db.files = db.files.filter((entry) => !(entry.repositoryId === repoId && entry.id === fileId)); repo.updatedAt = new Date().toISOString(); dbWrite(db); return { message: "File deleted." };
+  return apiRequest(`/repositories/${encodeURIComponent(repoId)}/files/${encodeURIComponent(fileId)}`, { method: "DELETE" });
 }
-export async function getCommits(repoId) { await getRepository(repoId); return { data: dbRead().commits.filter((entry) => entry.repositoryId === repoId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) }; }
+export async function getCommits(repoId) { return { data: await apiRequest(`/repositories/${encodeURIComponent(repoId)}/commits`) }; }
 export async function getCommit(repoId, commitId) { const result = await getCommits(repoId); const commit = result.data.find((entry) => entry.id === commitId); if (!commit) throw new Error("Commit was not found."); return { data: commit }; }
 export async function createCommit(repoId, message) {
-  const db = dbRead(); const user = requireUser(db); const repo = db.repositories.find((entry) => entry.id === repoId && entry.ownerId === user.id);
-  if (!repo) throw new Error("Only the repository owner can create a commit."); if (!String(message || "").trim()) throw new Error("Commit message is required.");
-  const previous = db.commits.find((entry) => entry.repositoryId === repoId);
-  const commit = { id: id("commit"), repositoryId: repoId, message: String(message).trim(), authorId: user.id, authorName: user.fullName, parentId: previous?.id || null, createdAt: new Date().toISOString(), files: db.files.filter((entry) => entry.repositoryId === repoId).length };
-  db.commits.unshift(commit); repo.updatedAt = commit.createdAt; dbWrite(db); return { data: commit };
+  return { data: await apiRequest(`/repositories/${encodeURIComponent(repoId)}/commits`, { method: "POST", body: JSON.stringify({ message }) }) };
 }

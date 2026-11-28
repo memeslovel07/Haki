@@ -1,8 +1,9 @@
-
+﻿
 import { GitBranch, Code2,Users,ShieldCheck,Zap, GitCommit, ArrowRight, Target, Rocket, Layers3, CheckCircle2, Heart} from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import HakiLogo from "../components/HakiLogo";
 
-const AboutPage = () => {
+const AboutPage = ({ hideHeader = false }) => {
   const navigate = useNavigate();
 
   const features = [
@@ -60,7 +61,11 @@ const AboutPage = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-[#FFF8F1] text-gray-900 overflow-hidden">
+    <div className="about-page min-h-screen bg-[#FAF8F1] text-gray-900 overflow-hidden" data-theme={document.documentElement.dataset.theme || "dark"}>
+      {!hideHeader && <header className="flex items-center justify-between border-b border-gray-200 bg-[#FAF8F1] px-5 py-4 sm:px-10">
+        <button onClick={() => navigate("/")} className="flex items-center gap-2 text-xl font-bold tracking-tight"><HakiLogo className="h-10 w-10"/>HAKI<span className="text-[#438C89]">.</span></button>
+        <nav className="flex items-center gap-5 text-sm font-medium"><button onClick={() => navigate("/")} className="hover:opacity-70">Home</button><button onClick={() => navigate("/", { state: { openLogin: true } })} className="rounded-lg bg-[#438C89] px-4 py-2 text-white hover:bg-[#367C79]">Log in</button></nav>
+      </header>}
 
       {/* HERO SECTION */}
       <section className="relative border-b border-gray-200
@@ -69,29 +74,28 @@ const AboutPage = () => {
         <div className="absolute inset-0 opacity-[0.035]"
           style={{
             backgroundImage:
-              "radial-gradient(#000 1px, transparent 1px)",
+              "radial-gradient(#7B8076 1px, transparent 1px)",
             backgroundSize: "24px 24px"
           }}
         />
 
         <div className="absolute w-[500px] h-[500px]
-          rounded-full bg-gray-100 blur-3xl -top-64
+          rounded-full bg-[#F0F1F4] blur-3xl -top-64
           right-0" />
 
-        <div className="relative max-w-7xl mx-auto px-6
-          sm:px-10 py-24 md:py-32">
+        <div className={`relative max-w-7xl mx-auto px-6 sm:px-10 ${hideHeader ? "py-16 md:py-20" : "py-20 md:py-28"}`}>
 
           <div className="max-w-3xl">
 
-            <div className="inline-flex items-center gap-2
+            <div className="about-reveal about-reveal-1 inline-flex items-center gap-2
               border border-gray-200 rounded-full px-4 py-2
               text-xs font-semibold tracking-wide text-gray-600
               mb-8">
-              <span className="w-2 h-2 bg-green-500 rounded-full" />
+              <span className="w-2 h-2 bg-[#727F8F] rounded-full" />
               GET TO KNOW HAKI
             </div>
 
-            <h1 className="text-5xl sm:text-6xl md:text-7xl
+            <h1 className="about-reveal about-reveal-2 text-6xl sm:text-7xl md:text-8xl
               font-bold tracking-tight leading-[1.08]">
               We build tools
               <br />
@@ -102,7 +106,7 @@ const AboutPage = () => {
               </span>
             </h1>
 
-            <p className="text-gray-500 text-base sm:text-lg
+            <p className="about-reveal about-reveal-3 text-gray-500 text-base sm:text-lg
               leading-8 max-w-2xl mt-8">
               Haki is a developer-focused version control
               workspace built to simplify how developers
@@ -110,12 +114,12 @@ const AboutPage = () => {
               collaborate on code.
             </p>
 
-            <div className="flex flex-wrap gap-4 mt-9">
+            <div className="about-reveal about-reveal-4 flex flex-wrap gap-4 mt-9">
               <button
                 onClick={() => navigate("/")}
-                className="bg-black text-white px-6 py-3.5
+                className="bg-[#E0E4EA] text-[#4F574F] px-6 py-3.5
                   rounded-xl text-sm font-semibold
-                  flex items-center gap-2 hover:bg-gray-800
+                  flex items-center gap-2 hover:bg-[#E8EBF0]
                   transition"
               >
                 Explore Haki
@@ -126,7 +130,7 @@ const AboutPage = () => {
                 onClick={() => navigate("/setting")}
                 className="border border-gray-200 px-6 py-3.5
                   rounded-xl text-sm font-semibold
-                  hover:bg-gray-50 transition"
+                  hover:bg-[#F7F5EE] transition"
               >
                 Explore Settings
               </button>
@@ -134,20 +138,20 @@ const AboutPage = () => {
           </div>
 
           {/* HERO VISUAL */}
-          <div className="mt-20 relative max-w-4xl">
+          <div className="about-reveal about-reveal-5 mt-20 relative max-w-4xl">
 
-            <div className="rounded-2xl bg-[#09090b] p-5
-              sm:p-8 shadow-2xl border border-gray-800">
+            <div className="rounded-2xl bg-[#EEF0F4] p-5
+              sm:p-8 shadow-xl border border-[#D8DED2]">
 
               <div className="flex items-center justify-between
-                border-b border-white/10 pb-5">
+                border-b border-[#D8DED2] pb-5">
 
                 <div className="flex items-center gap-3">
-                  <div className="bg-white text-black p-2 rounded-lg">
+                  <div className="bg-white text-[#4F574F] p-2 rounded-lg">
                     <GitBranch size={21} />
                   </div>
                   <div>
-                    <p className="text-white text-sm font-semibold">
+                  <p className="text-[#4F574F] text-sm font-semibold">
                       haki-project
                     </p>
                     <p className="text-gray-500 text-xs">
@@ -156,8 +160,8 @@ const AboutPage = () => {
                   </div>
                 </div>
 
-                <span className="text-xs text-green-400
-                  bg-green-400/10 px-3 py-1.5 rounded-full">
+                <span className="text-xs text-[#637080]
+                  bg-[#E8EBF0] px-3 py-1.5 rounded-full">
                   ● All systems ready
                 </span>
               </div>
@@ -172,10 +176,10 @@ const AboutPage = () => {
                   const Icon = item.icon;
                   return (
                     <div key={item.title}
-                      className="bg-white/[0.06] border
-                        border-white/10 rounded-xl p-5">
-                      <Icon size={22} className="text-gray-300 mb-6" />
-                      <p className="text-white font-semibold">
+                      className="bg-white border
+                        border-[#E1E3E8] rounded-xl p-5">
+                      <Icon size={22} className="text-[#697586] mb-6" />
+                      <p className="text-[#4F574F] font-semibold">
                         {item.title}
                       </p>
                       <p className="text-gray-500 text-xs mt-2">
@@ -187,8 +191,8 @@ const AboutPage = () => {
               </div>
 
               <div className="flex items-center gap-3 mt-7
-                text-gray-400 text-xs">
-                <CheckCircle2 size={16} className="text-green-400" />
+                text-gray-600 text-xs">
+                <CheckCircle2 size={16} className="text-[#637080]" />
                 Designed for a better development workflow.
               </div>
             </div>
@@ -239,7 +243,7 @@ const AboutPage = () => {
       </section>
 
       {/* MISSION / VISION */}
-      <section className="bg-[#fafafa] border-y border-gray-100">
+      <section className="bg-[#FBFAF6] border-y border-gray-100">
         <div className="max-w-7xl mx-auto px-6 sm:px-10 py-24">
 
           <div className="mb-12">
@@ -263,7 +267,7 @@ const AboutPage = () => {
                     hover:border-gray-400 transition">
 
                   <div className="w-12 h-12 rounded-xl
-                    bg-black text-white flex items-center
+                    bg-[#E0E4EA] text-[#4F574F] flex items-center
                     justify-center mb-7">
                     <Icon size={23} />
                   </div>
@@ -314,9 +318,9 @@ const AboutPage = () => {
                   hover:-translate-y-1 transition-all duration-300">
 
                 <div className="w-12 h-12 rounded-xl
-                  bg-gray-100 flex items-center
-                  justify-center group-hover:bg-black
-                  group-hover:text-white transition">
+                  bg-[#F0F1F4] flex items-center
+                  justify-center group-hover:bg-[#E0E4EA]
+                  group-hover:text-[#4F574F] transition">
                   <Icon size={22} />
                 </div>
 
@@ -342,16 +346,16 @@ const AboutPage = () => {
 
       {/* FINAL CTA */}
       <section className="px-6 sm:px-10 pb-24">
-        <div className="max-w-7xl mx-auto bg-[#09090b]
+        <div className="max-w-7xl mx-auto bg-[#EEF0F4]
           rounded-3xl px-7 sm:px-16 py-16 sm:py-20
-          text-center text-white relative overflow-hidden">
+          text-center text-[#4F574F] relative overflow-hidden">
 
           <div className="absolute w-80 h-80 rounded-full
             bg-white/5 blur-3xl -top-40 left-1/3" />
 
           <div className="relative">
             <div className="mx-auto w-14 h-14 bg-white
-              text-black rounded-2xl flex items-center
+              text-[#4F574F] rounded-2xl flex items-center
               justify-center mb-7">
               <Layers3 size={28} />
             </div>
@@ -363,7 +367,7 @@ const AboutPage = () => {
               Your Haki.
             </h2>
 
-            <p className="text-gray-400 text-sm sm:text-base
+            <p className="text-gray-600 text-sm sm:text-base
               mt-6 max-w-xl mx-auto leading-7">
               Start organizing your projects and experience
               a better way to manage your development workflow.
@@ -371,7 +375,7 @@ const AboutPage = () => {
 
             <button
               onClick={() => navigate("/")}
-              className="mt-9 bg-white text-black
+              className="mt-9 bg-white text-[#4F574F]
                 px-7 py-3.5 rounded-xl font-semibold
                 text-sm inline-flex items-center gap-2
                 hover:bg-gray-200 transition"
@@ -390,7 +394,7 @@ const AboutPage = () => {
           items-center justify-between gap-5">
 
           <div className="flex items-center gap-2">
-            <div className="bg-black text-white p-2 rounded-lg">
+            <div className="bg-[#E0E4EA] text-[#4F574F] p-2 rounded-lg">
               <GitBranch size={18} />
             </div>
             <span className="font-bold text-lg">Haki</span>
@@ -402,7 +406,7 @@ const AboutPage = () => {
 
           <div className="flex items-center gap-2
             text-xs text-gray-400">
-            Made with <Heart size={13} className="text-red-500" />
+            Made with <Heart size={13} className="text-[#8C7967]" />
             for developers
           </div>
         </div>

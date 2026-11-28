@@ -1,16 +1,7 @@
 
 import { useEffect, useState } from "react";
-import { UserRound, Settings as SettingsIcon, Palette, Bell, ShieldCheck, GitBranch, ChevronRight, Camera, LockKeyhole, Mail, Globe, Trash2, Monitor, Moon, Sun, Save, Eye, EyeOff, KeyRound, CheckCircle2, Upload,} from "lucide-react";
-import { changeAccountPassword, updateAccountProfile, updateProfileAvatar } from "../services/api";
-
-const readStorage = (key, fallback) => {
-  try {
-    const value = localStorage.getItem(key);
-    return value ? JSON.parse(value) : fallback;
-  } catch {
-    return fallback;
-  }
-};
+import { UserRound, Settings as SettingsIcon, Palette, Bell, ShieldCheck, GitBranch, ChevronRight, Camera, LockKeyhole, Mail, Globe, Trash2, Moon, Sun, Save, Eye, EyeOff, KeyRound, CheckCircle2, Upload,} from "lucide-react";
+import { changeAccountPassword, createGitHubLink, getAccountSettings, updateAccountSettings, updateAccountProfile, updateProfileAvatar } from "../services/api";
 
 const defaultProfile = {
   name: "",
@@ -34,26 +25,72 @@ const defaultRepository = {
   autoInit: true,
 };
 
-const SettingPage = ({ user, onUserUpdate }) => {
+// Reusable section heading
+const SectionHeading = ({ title, description }) => (
+  <div className="border-b border-gray-200 pb-5 mb-7">
+    <h2 className="text-xl font-bold text-gray-900">
+      {title}
+    </h2>
+    <p className="text-sm text-gray-500 mt-1">
+      {description}
+    </p>
+  </div>
+);
+
+// Reusable toggle
+const Toggle = ({ checked, onChange }) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    onClick={onChange}
+    className={`w-11 h-6 rounded-full relative shrink-0 transition-colors ${
+      checked ? "bg-black" : "bg-gray-300"
+    }`}
+  >
+    <span
+      className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${
+        checked ? "left-6" : "left-1"
+      }`}
+    />
+  </button>
+);
+
+// Reusable notification row
+const SettingRow = ({
+  title,
+  description,
+  checked,
+  onChange,
+}) => (
+  <div className="flex items-center justify-between gap-4 py-5 border-b border-gray-100 last:border-0">
+    <div>
+      <h4 className="text-sm font-semibold text-gray-800">
+        {title}
+      </h4>
+      <p className="text-xs text-gray-500 mt-1">
+        {description}
+      </p>
+    </div>
+    <Toggle checked={checked} onChange={onChange} />
+  </div>
+);
+
+
+const SettingPage = ({ user, onUserUpdate, theme: appTheme, onThemeChange }) => {
   const [active, setActive] = useState("Profile");
 
-  const [profile, setProfile] = useState(() => ({ ...defaultProfile, name: user?.fullName || "", username: user?.username || "", email: user?.email || "", ...readStorage("hakiProfile", {}) }));
+  const [profile, setProfile] = useState(() => ({ ...defaultProfile, name: user?.fullName || "", username: user?.username || "", email: user?.email || "", bio: user?.bio || "", location: user?.location || "" }));
 
   const [profileImage, setProfileImage] = useState(
-    () => user?.avatarDataUrl || localStorage.getItem("hakiProfileImage") || ""
+    () => user?.avatarDataUrl || ""
   );
 
-  const [theme, setTheme] = useState(
-    () => localStorage.getItem("hakiTheme") || "Light"
-  );
+  const theme = appTheme || "dark";
 
-  const [notifications, setNotifications] = useState(() =>
-    readStorage("hakiNotifications", defaultNotifications)
-  );
+  const [notifications, setNotifications] = useState(defaultNotifications);
 
-  const [repo, setRepo] = useState(() =>
-    readStorage("hakiRepository", defaultRepository)
-  );
+  const [repo, setRepo] = useState(defaultRepository);
 
   const [passwords, setPasswords] = useState({
     currentPassword: "",
@@ -70,7 +107,48 @@ const SettingPage = ({ user, onUserUpdate }) => {
 
   const [saved, setSaved] = useState(false);
   const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState("success");
   const [imageError, setImageError] = useState("");
+  const [githubLinkLoading, setGithubLinkLoading] = useState(false);
+
+  useEffect(() => {
+    getAccountSettings().then((settings) => {
+      if (settings.notifications) setNotifications({ ...defaultNotifications, ...settings.notifications });
+      if (settings.repository) setRepo({ ...defaultRepository, ...settings.repository });
+      if (typeof settings.theme === "string" && settings.theme) {
+        const nextTheme = settings.theme.toLowerCase() === "light" ? "light" : "dark";
+        onThemeChange?.(nextTheme);
+      }
+    }).catch((error) => { setMessageType("error"); setMessage(error.message || "Unable to load account settings."); });
+  }, [onThemeChange]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get("github_link");
+    if (!result) return;
+    const messages = {
+      success: "GitHub account connected. You can now sign in with GitHub.",
+      already_linked: "That GitHub account is linked to a different HAKI account.",
+      expired: "The GitHub linking request expired. Start again.",
+      cancelled: "GitHub account linking was cancelled.",
+      failed: "GitHub account linking failed. Try again.",
+    };
+    queueMicrotask(() => { setMessageType(result === "success" ? "success" : "error"); setMessage(messages[result] || messages.failed); });
+    window.history.replaceState({}, "", window.location.pathname);
+  }, []);
+
+  async function linkGitHubAccount() {
+    setGithubLinkLoading(true);
+    setMessage("");
+    try {
+      const result = await createGitHubLink();
+      window.location.assign(result.authorizationUrl);
+    } catch (error) {
+      setMessageType("error");
+      setMessage(error.message || "Unable to start GitHub account linking.");
+      setGithubLinkLoading(false);
+    }
+  }
 
   // Settings navigation
   const menu = [
@@ -99,23 +177,12 @@ const SettingPage = ({ user, onUserUpdate }) => {
   // Apply theme
   useEffect(() => {
     const applyTheme = () => {
-      const dark =
-        theme === "Dark" ||
-        (theme === "System" &&
-          window.matchMedia("(prefers-color-scheme: dark)").matches);
-
-      document.documentElement.classList.toggle("dark", dark);
+      document.documentElement.classList.toggle("dark", theme === "dark");
+      document.documentElement.dataset.theme = theme;
     };
 
     applyTheme();
     localStorage.setItem("hakiTheme", theme);
-
-    if (theme === "System") {
-      const media = window.matchMedia("(prefers-color-scheme: dark)");
-      media.addEventListener("change", applyTheme);
-
-      return () => media.removeEventListener("change", applyTheme);
-    }
   }, [theme]);
 
   // Update profile fields
@@ -187,9 +254,9 @@ const SettingPage = ({ user, onUserUpdate }) => {
   const saveProfile = async () => {
     try {
       const result = await updateAccountProfile(profile);
-      localStorage.setItem("hakiProfile", JSON.stringify(profile));
       onUserUpdate?.(result.user);
       setSaved(true);
+      setMessageType("success");
       setMessage("Profile saved successfully.");
 
       window.dispatchEvent(
@@ -197,8 +264,9 @@ const SettingPage = ({ user, onUserUpdate }) => {
       );
 
       setTimeout(() => setMessage(""), 3000);
-    } catch {
-      setMessage("Unable to save profile.");
+    } catch (error) {
+      setMessageType("error");
+      setMessage(error.message || "Unable to save profile.");
     }
   };
 
@@ -213,26 +281,18 @@ const SettingPage = ({ user, onUserUpdate }) => {
   };
 
   // Save all preferences
-  const saveSettings = () => {
+  const saveSettings = async () => {
     try {
-      localStorage.setItem(
-        "hakiNotifications",
-        JSON.stringify(notifications)
-      );
-
-      localStorage.setItem(
-        "hakiRepository",
-        JSON.stringify(repo)
-      );
-
-      localStorage.setItem("hakiTheme", theme);
+      await updateAccountSettings({ notifications, repository: repo, theme });
 
       setSaved(true);
+      setMessageType("success");
       setMessage("Settings saved successfully.");
 
       setTimeout(() => setMessage(""), 3000);
-    } catch {
-      setMessage("Unable to save settings.");
+    } catch (error) {
+      setMessageType("error");
+      setMessage(error.message || "Unable to save settings.");
     }
   };
 
@@ -246,7 +306,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
     setPasswordMessage({ type: "", text: "" });
   };
 
-  // Change password in the local preview store.
+  // Change the password through the HAKI API.
   const handlePasswordChange = async (e) => {
     e.preventDefault();
 
@@ -266,10 +326,10 @@ const SettingPage = ({ user, onUserUpdate }) => {
       return;
     }
 
-    if (newPassword.length < 8) {
+    if (newPassword.length < 12) {
       setPasswordMessage({
         type: "error",
-        text: "New password must contain at least 8 characters.",
+        text: "New password must contain at least 12 characters.",
       });
       return;
     }
@@ -303,7 +363,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
 
       setPasswordMessage({
         type: "success",
-        text: data.message || "Password changed in this browser preview.",
+        text: data.message || "Password updated successfully.",
       });
     } catch (error) {
       setPasswordMessage({
@@ -315,56 +375,6 @@ const SettingPage = ({ user, onUserUpdate }) => {
     }
   };
 
-  // Reusable section heading
-  const SectionHeading = ({ title, description }) => (
-    <div className="border-b border-gray-200 pb-5 mb-7">
-      <h2 className="text-xl font-bold text-gray-900">
-        {title}
-      </h2>
-      <p className="text-sm text-gray-500 mt-1">
-        {description}
-      </p>
-    </div>
-  );
-
-  // Reusable toggle
-  const Toggle = ({ checked, onChange }) => (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={onChange}
-      className={`w-11 h-6 rounded-full relative shrink-0 transition-colors ${
-        checked ? "bg-black" : "bg-gray-300"
-      }`}
-    >
-      <span
-        className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${
-          checked ? "left-6" : "left-1"
-        }`}
-      />
-    </button>
-  );
-
-  // Reusable notification row
-  const SettingRow = ({
-    title,
-    description,
-    checked,
-    onChange,
-  }) => (
-    <div className="flex items-center justify-between gap-4 py-5 border-b border-gray-100 last:border-0">
-      <div>
-        <h4 className="text-sm font-semibold text-gray-800">
-          {title}
-        </h4>
-        <p className="text-xs text-gray-500 mt-1">
-          {description}
-        </p>
-      </div>
-      <Toggle checked={checked} onChange={onChange} />
-    </div>
-  );
 
   return (
     <div className="min-h-screen bg-[#FFF8F1] dark:bg-[#09090b] text-gray-900 dark:text-gray-100 transition-colors">
@@ -379,7 +389,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
           <p className="text-sm text-gray-500 mt-1">
             Manage your account and workspace preferences.
           </p>
-          <p className="mt-3 max-w-3xl rounded-xl border border-[#E8D9DE] bg-white/75 px-4 py-3 text-xs leading-5 text-[#706B79]">Frontend preview: data stays in this browser. It does not provide production account security or send email.</p>
+          <p className="mt-3 max-w-3xl rounded-xl border border-[#E8D9DE] bg-white/75 px-4 py-3 text-xs leading-5 text-[#706B79]">Profile and workspace preferences are saved to your HAKI account.</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-[230px_minmax(0,1fr)] gap-8">
@@ -502,7 +512,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                       </div>
 
                       <p className="text-xs text-gray-400 mt-2">
-                        PNG, JPG or WEBP · Maximum 2MB
+                        PNG, JPG or WEBP · Maximum 1 MB
                       </p>
                     </div>
                   </div>
@@ -532,8 +542,9 @@ const SettingPage = ({ user, onUserUpdate }) => {
                           name={key}
                           value={profile[key] || ""}
                           onChange={updateProfile}
+                          disabled={key === "email"}
                           placeholder={placeholder}
-                          className={`${inputClass} mt-2 dark:bg-[#181818] dark:border-gray-700 dark:text-white`}
+                          className={`${inputClass} mt-2 disabled:cursor-not-allowed disabled:bg-gray-100 dark:bg-[#181818] dark:border-gray-700 dark:text-white`}
                         />
                       </div>
                     ))}
@@ -637,9 +648,8 @@ const SettingPage = ({ user, onUserUpdate }) => {
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
                     {[
-                      { name: "Light", icon: Sun },
-                      { name: "Dark", icon: Moon },
-                      { name: "System", icon: Monitor },
+                      { name: "light", label: "Light", icon: Sun },
+                      { name: "dark", label: "Dark", icon: Moon },
                     ].map((item) => {
                       const Icon = item.icon;
 
@@ -647,9 +657,10 @@ const SettingPage = ({ user, onUserUpdate }) => {
                         <button
                           key={item.name}
                           onClick={() => {
-                            setTheme(item.name);
+                            onThemeChange?.(item.name);
                             setSaved(false);
                           }}
+                          aria-pressed={theme === item.name}
                           className={`border rounded-xl p-5 text-left transition ${
                             theme === item.name
                               ? "border-black dark:border-white bg-gray-50 dark:bg-gray-800"
@@ -659,14 +670,10 @@ const SettingPage = ({ user, onUserUpdate }) => {
                           <Icon size={25} className="mb-5" />
 
                           <p className="font-semibold text-sm">
-                            {item.name}
+                            {item.label}
                           </p>
 
-                          <p className="text-xs text-gray-400 mt-1">
-                            {item.name === "System"
-                              ? "Follow device settings"
-                              : `${item.name} mode`}
-                          </p>
+                          <p className="text-xs text-gray-400 mt-1">{item.label} mode</p>
 
                           {theme === item.name && (
                             <CheckCircle2 size={17} className="mt-4" />
@@ -678,7 +685,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                   </div>
 
                   <p className="text-xs text-gray-400 mt-6">
-                    Theme preference is applied to this page. Add the same dark-mode classes to your other application components for a consistent experience.
+                    Theme applies across your HAKI workspace and is saved with your account preferences.
                   </p>
                 </>
               )}
@@ -736,6 +743,17 @@ const SettingPage = ({ user, onUserUpdate }) => {
                     description="Keep your Haki account secure."
                   />
 
+                  <div className="mb-7 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+                    <div className="flex items-center gap-3">
+                      <GitBranch size={20} />
+                      <div>
+                        <h3 className="text-sm font-semibold">GitHub account</h3>
+                        <p className="mt-1 text-xs text-gray-500">{user?.linkedProviders?.includes("GITHUB") ? "Connected for GitHub sign-in." : "Connect GitHub to use it for future sign-ins."}</p>
+                      </div>
+                    </div>
+                    {!user?.linkedProviders?.includes("GITHUB") && <button type="button" onClick={linkGitHubAccount} disabled={githubLinkLoading} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold disabled:opacity-50">{githubLinkLoading ? "Connecting…" : "Connect GitHub"}</button>}
+                  </div>
+
                   <div className="flex items-start gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl mb-7">
                     <div className="w-10 h-10 bg-white dark:bg-gray-700 rounded-lg flex items-center justify-center">
                       <ShieldCheck size={22} />
@@ -778,7 +796,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                             value={passwords[key]}
                             onChange={updatePassword}
                             placeholder={`Enter ${label.toLowerCase()}`}
-                            minLength={key !== "currentPassword" ? 8 : undefined}
+                            minLength={key !== "currentPassword" ? 12 : undefined}
                             required
                             className={`${inputClass} pl-11 pr-12 dark:bg-[#181818] dark:border-gray-700 dark:text-white`}
                           />
@@ -806,7 +824,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
                       </p>
 
                       <ul className="text-xs text-gray-500 space-y-1">
-                        <li>• Minimum 8 characters</li>
+                        <li>• Minimum 12 characters</li>
                         <li>• Must be different from current password</li>
                         <li>• Both new password fields must match</li>
                       </ul>
@@ -913,7 +931,7 @@ const SettingPage = ({ user, onUserUpdate }) => {
 
                 <div>
                   {message && (
-                    <p className="text-sm text-green-600">
+                    <p role={messageType === "error" ? "alert" : "status"} className={`text-sm ${messageType === "error" ? "text-red-600" : "text-green-600"}`}>
                       {message}
                     </p>
                   )}
