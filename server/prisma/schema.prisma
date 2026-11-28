@@ -19,6 +19,8 @@ enum TeamRole {
 enum MembershipStatus {
   ACTIVE
   SUSPENDED
+  INVITED
+  DECLINED
 }
 
 enum OAuthProvider {
@@ -82,6 +84,8 @@ model User {
   passwordHash    String?   @db.VarChar(255)
   emailVerifiedAt DateTime? @db.Timestamptz(6)
   deletedAt       DateTime? @db.Timestamptz(6)
+  profile         Json?
+  settings        Json?
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
@@ -89,11 +93,126 @@ model User {
   oauthAccounts   OAuthAccount[]
   teamMemberships TeamMember[]
   refreshTokens   RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
+  workspaceRepositories WorkspaceRepository[]
+  githubInstallStates GitHubInstallState[]
+  oauthLinkStates OAuthLinkState[]
+  teamInvitationsSent TeamInvitation[] @relation("TeamInvitationInvitedBy")
+  githubInstallationStates GitHubInstallationState[]
 
   submissions    Submission[]    @relation("SubmissionAuthor")
   reviews        Review[]        @relation("ReviewReviewer")
   reviewComments ReviewComment[] @relation("ReviewCommentAuthor")
   auditEvents    AuditEvent[]    @relation("AuditActor")
+}
+
+enum WorkspaceVisibility {
+  PUBLIC
+  PRIVATE
+}
+
+model GitHubInstallState {
+  tokenHash String   @id @db.Char(64)
+  userId    String   @db.Uuid
+  expiresAt DateTime @db.Timestamptz(6)
+  usedAt    DateTime? @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model PasswordResetToken {
+  tokenHash String   @id @db.Char(64)
+  userId    String   @db.Uuid
+  expiresAt DateTime @db.Timestamptz(6)
+  usedAt    DateTime? @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model OAuthLinkState {
+  tokenHash String   @id @db.Char(64)
+  userId    String   @db.Uuid
+  expiresAt DateTime @db.Timestamptz(6)
+  usedAt    DateTime? @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model WorkspaceRepository {
+  id            String              @id @default(uuid()) @db.Uuid
+  ownerId       String              @db.Uuid
+  name          String              @db.VarChar(100)
+  description   String?             @db.Text
+  visibility    WorkspaceVisibility @default(PRIVATE)
+  defaultBranch String              @default("main") @db.VarChar(255)
+  createdAt     DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime            @updatedAt @db.Timestamptz(6)
+
+  owner   User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  files   WorkspaceFile[]
+  commits WorkspaceCommit[]
+
+  @@unique([ownerId, name])
+  @@index([ownerId, updatedAt])
+}
+
+model WorkspaceFile {
+  id           String   @id @default(uuid()) @db.Uuid
+  repositoryId String   @db.Uuid
+  name         String   @db.VarChar(255)
+  path         String   @db.Text
+  content      String   @db.Text
+  encoding     String   @default("utf8") @db.VarChar(20)
+  mimeType     String   @default("text/plain") @db.VarChar(255)
+  size         Int      @default(0)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+
+  repository WorkspaceRepository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@unique([repositoryId, path])
+  @@index([repositoryId, path])
+}
+
+model WorkspaceCommit {
+  id           String   @id @default(uuid()) @db.Uuid
+  repositoryId String   @db.Uuid
+  authorId     String   @db.Uuid
+  authorName   String   @db.VarChar(120)
+  message      String   @db.VarChar(500)
+  parentId     String?  @db.Uuid
+  files        Int      @default(0)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+
+  repository WorkspaceRepository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  snapshotFiles WorkspaceCommitFile[]
+
+  @@index([repositoryId, createdAt])
+}
+
+model WorkspaceCommitFile {
+  id        String @id @default(uuid()) @db.Uuid
+  commitId  String @db.Uuid
+  name      String @db.VarChar(255)
+  path      String @db.Text
+  content   String @db.Text
+  encoding  String @default("utf8") @db.VarChar(20)
+  mimeType  String @default("text/plain") @db.VarChar(255)
+  size      Int    @default(0)
+
+  commit WorkspaceCommit @relation(fields: [commitId], references: [id], onDelete: Cascade)
+
+  @@unique([commitId, path])
+  @@index([commitId])
 }
 
 model OAuthAccount {
@@ -128,6 +247,8 @@ model Team {
   repositories  Repository[]
   settings      TeamSettings?
   auditEvents   AuditEvent[]
+  invitations   TeamInvitation[]
+  githubInstallationStates GitHubInstallationState[]
 }
 
 model TeamMember {
@@ -158,6 +279,38 @@ model TeamSettings {
   team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
 }
 
+model TeamInvitation {
+  id          String   @id @default(uuid()) @db.Uuid
+  teamId      String   @db.Uuid
+  email       String   @db.VarChar(320)
+  role        TeamRole @default(DEVELOPER)
+  invitedById String   @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  expiresAt   DateTime @db.Timestamptz(6)
+  respondedAt DateTime? @db.Timestamptz(6)
+
+  team      Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  invitedBy User @relation("TeamInvitationInvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, email])
+  @@index([email, expiresAt])
+}
+
+model GitHubInstallationState {
+  stateHash String   @id @db.Char(64)
+  userId    String   @db.Uuid
+  teamId    String   @db.Uuid
+  expiresAt DateTime @db.Timestamptz(6)
+  usedAt    DateTime? @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@index([userId, teamId])
+}
+
 // ─── GitHub Integration ──────────────────────────────
 
 model GitHubInstallation {
@@ -167,7 +320,11 @@ model GitHubInstallation {
   accountLogin   String            @db.VarChar(255)
   accountType    GitHubAccountType
   teamId         String            @db.Uuid
+  accountUrl     String?           @db.Text
+  permissions    Json?
+  repositorySelection String?      @db.VarChar(32)
   suspendedAt    DateTime?         @db.Timestamptz(6)
+  removedAt      DateTime?         @db.Timestamptz(6)
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
@@ -215,6 +372,12 @@ model RepositorySettings {
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
   repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+}
+
+model GitHubWebhookDelivery {
+  deliveryId  String   @id @db.VarChar(100)
+  event       String   @db.VarChar(100)
+  processedAt DateTime @default(now()) @db.Timestamptz(6)
 }
 
 // ─── Code Governance ─────────────────────────────────

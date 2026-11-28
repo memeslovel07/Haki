@@ -34,3 +34,5 @@ export const refreshRateLimiter = createRateLimiter(
   15 * 60 * 1000,
   30
 );
+
+export const passwordResetRateLimiter = createRateLimiter(60 * 60 * 1000, 5);

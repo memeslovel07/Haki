@@ -1,13 +1,17 @@
 {
   "name": "haki",
   "version": "0.1.0",
-  "description": "",
+  "description": "HAKI version control and code governance workspace",
   "main": "index.js",
   "directories": {
     "doc": "docs"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev:client": "npm run dev --workspace client",
+    "dev:server": "npm run dev --workspace @haki/server",
+    "build": "npm run build --workspace client && npm run build --workspace @haki/server",
+    "lint": "npm run lint --workspace client",
+    "test": "npm run test --workspace @haki/server"
   },
   "keywords": [],
   "author": "",

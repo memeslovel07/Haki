@@ -16,7 +16,11 @@ export async function submitReview(req: AuthenticatedRequest, res: Response) {
     const submissionId =
       typeof rawSubmissionId === "string" ? rawSubmissionId : "";
 
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(submissionId)) {
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        submissionId,
+      )
+    ) {
       return res.status(400).json({
         success: false,
         error: { code: "INVALID_SUBMISSION_ID" },
@@ -25,12 +29,12 @@ export async function submitReview(req: AuthenticatedRequest, res: Response) {
 
     const userId = req.userId;
 
-if (!userId) {
-  return res.status(401).json({
-    success: false,
-    error: { code: "UNAUTHORIZED" },
-  });
-}
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: { code: "UNAUTHORIZED" },
+      });
+    }
 
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
@@ -52,7 +56,7 @@ if (!userId) {
         teamId: submission.repository.teamId,
         userId,
         status: "ACTIVE",
-        role: { in: ["OWNER", "ADMIN", "REVIEWER"] },
+        role: { in: ["OWNER", "ADMIN"] },
       },
       select: { id: true },
     });
@@ -95,6 +99,13 @@ if (!userId) {
         return res.status(404).json({
           success: false,
           error: { code: "SUBMISSION_NOT_FOUND" },
+        });
+      }
+
+      if (result.code === "SELF_REVIEW") {
+        return res.status(403).json({
+          success: false,
+          error: { code: "SELF_REVIEW" },
         });
       }
 

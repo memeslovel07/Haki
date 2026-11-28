@@ -10,6 +10,7 @@ import { createRefreshToken } from "./refresh-token.service.js";
 import { rotateRefreshToken } from "./refresh-token-rotation.service.js";
 import { revokeRefreshTokenFamily } from "./refresh-token.service.js";
 import { prisma } from "../../lib/prisma.js";
+import { isTransientDatabaseError } from "../../lib/database-errors.js";
 
 function isUniqueConstraintError(error: unknown): boolean {
   return (
@@ -240,17 +241,14 @@ export async function refreshSession(req: Request, res: Response) {
       },
     });
   } catch (error) {
-  console.error(
-    "Refresh failed:",
-    error instanceof Error ? error.name : typeof error
-  );
-   
+    const databaseUnavailable = isTransientDatabaseError(error);
+    console.error("Refresh failed:", error instanceof Error ? `${error.name}: ${error.message}` : "Unknown error");
 
-    return res.status(500).json({
+    return res.status(databaseUnavailable ? 503 : 500).json({
       success: false,
       error: {
-        code: "INTERNAL_SERVER_ERROR",
-        message: "An unexpected error occurred.",
+        code: databaseUnavailable ? "DATABASE_UNAVAILABLE" : "INTERNAL_SERVER_ERROR",
+        message: databaseUnavailable ? "Database connection is temporarily unavailable. Please retry shortly." : "An unexpected error occurred.",
       },
     });
   }

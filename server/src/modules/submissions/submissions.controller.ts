@@ -3,6 +3,68 @@ import type { AuthenticatedRequest } from "../../middleware/auth.middleware.js";
 import { prisma } from "../../lib/prisma.js";
 import { enqueueSubmissionValidation } from "./validation.service.js";
 
+export async function listGovernanceRepositories(req: AuthenticatedRequest, res: Response) {
+  try {
+    const repositories = await prisma.repository.findMany({
+      where: {
+        isArchived: false,
+        team: { members: { some: { userId: req.userId, status: "ACTIVE" } } },
+      },
+      select: { id: true, name: true, fullName: true, defaultBranch: true, htmlUrl: true, isPrivate: true, team: { select: { members: { where: { userId: req.userId, status: "ACTIVE" }, select: { role: true } } } } },
+      orderBy: { fullName: "asc" },
+    });
+    return res.json({ success: true, data: repositories.map(({ team, ...repository }) => ({ ...repository, memberRole: team.members[0]?.role })) });
+  } catch {
+    return res.status(500).json({ success: false, error: { code: "INTERNAL_SERVER_ERROR", message: "Unable to load connected GitHub repositories." } });
+  }
+}
+
+export async function listSubmissions(req: AuthenticatedRequest, res: Response) {
+  try {
+    const submissions = await prisma.submission.findMany({
+      where: { repository: { team: { members: { some: { userId: req.userId, status: "ACTIVE" } } } } },
+      include: {
+        repository: { select: { id: true, fullName: true, htmlUrl: true, defaultBranch: true, team: { select: { members: { where: { userId: req.userId, status: "ACTIVE" }, select: { role: true } } } } } },
+        submittedBy: { select: { id: true, name: true, email: true } },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+    return res.json({ success: true, data: submissions.map(({ repository, ...submission }) => ({ ...submission, memberRole: repository.team.members[0]?.role, repository: { id: repository.id, fullName: repository.fullName, htmlUrl: repository.htmlUrl, defaultBranch: repository.defaultBranch } })) });
+  } catch {
+    return res.status(500).json({ success: false, error: { code: "INTERNAL_SERVER_ERROR", message: "Unable to load code submissions." } });
+  }
+}
+
+export async function createSubmission(req: AuthenticatedRequest, res: Response) {
+  const body = req.body ?? {};
+  const { repositoryId, title, description, sourceBranch, targetBranch, baseCommitSha, headCommitSha } = body;
+  if (typeof repositoryId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(repositoryId) || typeof title !== "string" || !title.trim() || title.trim().length > 200 || typeof sourceBranch !== "string" || !sourceBranch.trim() || sourceBranch.trim().length > 255 || typeof targetBranch !== "string" || !targetBranch.trim() || targetBranch.trim().length > 255 || typeof baseCommitSha !== "string" || !/^[0-9a-f]{7,64}$/i.test(baseCommitSha) || typeof headCommitSha !== "string" || !/^[0-9a-f]{7,64}$/i.test(headCommitSha) || (description !== undefined && (typeof description !== "string" || description.length > 5000))) {
+    return res.status(400).json({ success: false, error: { code: "VALIDATION_ERROR", message: "Provide a repository, title, branches, and valid base/head commit SHAs." } });
+  }
+  try {
+    const repository = await prisma.repository.findFirst({
+      where: { id: repositoryId, isArchived: false, team: { members: { some: { userId: req.userId, status: "ACTIVE", role: { in: ["OWNER", "ADMIN", "DEVELOPER"] } } } } },
+      select: { id: true },
+    });
+    if (!repository) return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Connected repository not found." } });
+    const submission = await prisma.submission.create({
+      data: {
+        repositoryId, submittedById: req.userId!, title: title.trim(),
+        description: typeof description === "string" ? description.trim() : null,
+        sourceBranch: sourceBranch.trim(), targetBranch: targetBranch.trim(),
+        baseCommitSha, headCommitSha, status: "SUBMITTED", submittedAt: new Date(),
+      },
+      include: {
+        repository: { select: { id: true, fullName: true, htmlUrl: true, defaultBranch: true } },
+        submittedBy: { select: { id: true, name: true, email: true } },
+      },
+    });
+    return res.status(201).json({ success: true, data: submission });
+  } catch {
+    return res.status(500).json({ success: false, error: { code: "INTERNAL_SERVER_ERROR", message: "Unable to create code submission." } });
+  }
+}
+
 export async function triggerSubmissionValidation(
   req: AuthenticatedRequest,
   res: Response

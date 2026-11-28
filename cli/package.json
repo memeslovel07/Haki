@@ -1,10 +1,14 @@
 {
   "name": "@haki/cli",
   "version": "0.1.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Run Git commands through the HAKI command-line entry point",
+  "main": "./dist/index.js",
+  "bin": {
+    "haki": "./dist/index.js"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc -p tsconfig.json"
   },
   "keywords": [],
   "author": "",

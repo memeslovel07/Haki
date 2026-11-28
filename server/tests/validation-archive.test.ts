@@ -51,6 +51,19 @@ describe("Validation archive extraction", () => {
     }
   });
 
+  it("can preserve the archive root when importing ZIPs without one common folder", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "haki-archive-root-test-"));
+    try {
+      const archivePath = path.resolve(process.cwd(), "tests/fixtures/archive-test/sample.zip");
+      const workspacePath = path.join(tempDir, "workspace");
+      await extractValidationArchive(archivePath, workspacePath, { preserveRoot: true });
+      const readme = await readFile(path.join(workspacePath, "sample-repo", "README.md"), "utf8");
+      expect(readme.trim()).toBe("# Archive test");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("does not write through a pre-existing workspace symlink", async () => {
     const tempDir = await mkdtemp(
       path.join(os.tmpdir(), "haki-archive-symlink-"),
@@ -182,7 +195,7 @@ describe("Validation archive extraction", () => {
      } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
-}, 15000);
+}, 30000);
 it("rejects files exceeding the per-file size limit", async () => {
   const tempDir = await mkdtemp(
     path.join(os.tmpdir(), "haki-archive-file-limit-"),

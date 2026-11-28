@@ -61,7 +61,7 @@ export async function addReviewComment(
         teamId: submission.repository.teamId,
         userId,
         status: "ACTIVE",
-        role: { in: ["OWNER", "ADMIN", "REVIEWER"] },
+        role: { in: ["OWNER", "ADMIN"] },
       },
       select: { id: true },
     });

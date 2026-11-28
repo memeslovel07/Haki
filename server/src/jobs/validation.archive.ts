@@ -21,6 +21,7 @@ function isUnsafeWindowsPathComponent(part: string): boolean {
 export async function extractValidationArchive(
   archivePath: string,
   workspacePath: string,
+  options: { preserveRoot?: boolean } = {},
 ): Promise<void> {
   const root = path.resolve(workspacePath);
   let totalSize = 0;
@@ -61,15 +62,18 @@ if (
   throw new Error("Unsafe archive entry path.");
 }
 
-      if (!archiveRoot) {
+      if (!options.preserveRoot && !archiveRoot) {
         archiveRoot = parts[0];
       }
 
-      if (parts[0] !== archiveRoot) {
+      if (!options.preserveRoot && parts[0] !== archiveRoot) {
         throw new Error("Unexpected archive structure.");
       }
 
-      const relativePath = parts.slice(1).join("/");
+      if (!options.preserveRoot && parts.length === 1 && !name.endsWith("/")) {
+        throw new Error("Archive contains files at root.");
+      }
+      const relativePath = options.preserveRoot ? parts.join("/") : parts.slice(1).join("/");
 
       if (!relativePath) {
         continue;
